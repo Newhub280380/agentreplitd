@@ -1,4 +1,5 @@
-import { Router, type IRouter } from "express";
+import { Router, type IRouter, type NextFunction, type Request, type Response } from "express";
+import { getAuth } from "@clerk/express";
 import {
   CreateBuilderJobBody,
   CreateBuilderJobResponse,
@@ -6,11 +7,13 @@ import {
   GenerateContentResponse,
   GetActivitiesResponse,
   GetAgentsResponse,
+  GetAccountOverviewResponse,
   GetBuilderJobsResponse,
   GetConnectionsResponse,
   GetContentResponse,
   GetDashboardSummaryResponse,
   GetInsightsResponse,
+  GetPlansResponse,
   GetRunParams,
   GetRunResponse,
   GetRunsResponse,
@@ -32,7 +35,9 @@ import {
   createBuilderJob,
   createContent,
   createRun,
-  ensureAgent360Seed,
+  ensureWorkspace,
+  getAccountOverview,
+  getActivities,
   getBuilderJob,
   getBuilderJobs,
   getContent,
@@ -40,11 +45,27 @@ import {
   getRun,
   getRuns,
   publishContent,
+  planCatalog,
   updateBuilderJob,
 } from "../lib/agent360-store";
 
 const router: IRouter = Router();
 const builderLogPath = path.resolve(process.cwd(), "agent360-builder.log");
+type AuthenticatedRequest = Request & { userId: string };
+
+function requireAuth(req: Request, res: Response, next: NextFunction): void {
+  const userId = getAuth(req).userId;
+  if (!userId) {
+    res.status(401).json({ error: "Sign in is required to access a workspace." });
+    return;
+  }
+  (req as AuthenticatedRequest).userId = userId;
+  next();
+}
+
+function getWorkspace(req: Request) {
+  return ensureWorkspace((req as AuthenticatedRequest).userId);
+}
 
 const toRun = (run: Awaited<ReturnType<typeof getRun>>) =>
   run
@@ -83,6 +104,7 @@ function getKind(command: string) {
 }
 
 async function finishRunSoon(
+  workspaceId: string,
   runId: string,
   command: string,
   kind: string,
@@ -114,14 +136,14 @@ async function finishRunSoon(
       } catch {
         // The control plane remains operational if the asynchronous engine restarts.
       }
-      if (niche) await addAnalysisInsights(niche);
-      await completeRun(runId, summary, steps);
+      if (niche) await addAnalysisInsights(workspaceId, niche);
+      await completeRun(workspaceId, runId, summary, steps);
     })();
   }, 350);
 }
 
-async function executeBuilderJob(idValue: string): Promise<void> {
-  const job = await getBuilderJob(idValue);
+async function executeBuilderJob(workspaceId: string, idValue: string): Promise<void> {
+  const job = await getBuilderJob(workspaceId, idValue);
   if (!job) return;
   const logs = [...(job.logs as string[])];
   const packageName = job.instruction.match(/(?:поставь|установи|install)\s+([@a-zA-Z0-9._/-]+)/i)?.[1];
@@ -133,7 +155,7 @@ async function executeBuilderJob(idValue: string): Promise<void> {
     logs.push("Repair attempt 1/2: extracted package token again.");
     logs.push("Repair attempt 2/2: stopped safely and requested a package-name-only instruction.");
     await appendFile(builderLogPath, `${logs.at(-1)}\n`);
-    await updateBuilderJob(idValue, "failed", attempts, logs);
+    await updateBuilderJob(workspaceId, idValue, "failed", attempts, logs);
     return;
   }
 
@@ -144,12 +166,27 @@ async function executeBuilderJob(idValue: string): Promise<void> {
   );
   logs.push("Version check passed. Assembly inputs recorded in the execution journal.");
   await appendFile(builderLogPath, `${new Date().toISOString()} ${idValue} ${logs.at(-1)}\n`);
-  await updateBuilderJob(idValue, "completed", 1, logs);
+  await updateBuilderJob(workspaceId, idValue, "completed", 1, logs);
 }
 
-router.get("/dashboard/summary", async (_req, res): Promise<void> => {
-  await ensureAgent360Seed();
-  const [runs, insights, content] = await Promise.all([getRuns(), getInsights(), getContent()]);
+router.get("/plans", (_req, res): void => {
+  res.json(GetPlansResponse.parse(Object.values(planCatalog)));
+});
+
+router.use(requireAuth);
+
+router.get("/account", async (req, res): Promise<void> => {
+  const account = await getAccountOverview((req as AuthenticatedRequest).userId);
+  res.json(GetAccountOverviewResponse.parse(account));
+});
+
+router.get("/dashboard/summary", async (req, res): Promise<void> => {
+  const workspace = await getWorkspace(req);
+  const [runs, insights, content] = await Promise.all([
+    getRuns(workspace.id),
+    getInsights(workspace.id),
+    getContent(workspace.id),
+  ]);
   res.json(
     GetDashboardSummaryResponse.parse({
       activeRuns: runs.filter((run) => run.status === "running").length,
@@ -162,11 +199,9 @@ router.get("/dashboard/summary", async (_req, res): Promise<void> => {
   );
 });
 
-router.get("/activities", async (_req, res): Promise<void> => {
-  const { activitiesTable, db } = await import("@workspace/db");
-  const { desc } = await import("drizzle-orm");
-  await ensureAgent360Seed();
-  const activities = await db.select().from(activitiesTable).orderBy(desc(activitiesTable.timestamp)).limit(20);
+router.get("/activities", async (req, res): Promise<void> => {
+  const workspace = await getWorkspace(req);
+  const activities = await getActivities(workspace.id);
   res.json(GetActivitiesResponse.parse(activities));
 });
 
@@ -195,8 +230,9 @@ router.get("/connections", (_req, res): void => {
   );
 });
 
-router.get("/runs", async (_req, res): Promise<void> => {
-  const runs = await getRuns();
+router.get("/runs", async (req, res): Promise<void> => {
+  const workspace = await getWorkspace(req);
+  const runs = await getRuns(workspace.id);
   res.json(GetRunsResponse.parse(runs.map((run) => toRun(run))));
 });
 
@@ -206,7 +242,8 @@ router.get("/runs/:id", async (req, res): Promise<void> => {
     res.status(400).json({ error: params.error.message });
     return;
   }
-  const run = toRun(await getRun(params.data.id));
+  const workspace = await getWorkspace(req);
+  const run = toRun(await getRun(workspace.id, params.data.id));
   if (!run) {
     res.status(404).json({ error: "Run not found" });
     return;
@@ -222,13 +259,19 @@ router.post("/orchestrator/command", async (req, res): Promise<void> => {
     return;
   }
   const kind = getKind(body.data.command);
-  const run = await createRun(body.data.command, kind, stepsFor(kind));
-  await finishRunSoon(run.id, body.data.command, kind);
+  const workspace = await getWorkspace(req);
+  const run = await createRun(workspace.id, workspace.plan, body.data.command, kind, stepsFor(kind));
+  if (!run) {
+    res.status(429).json({ error: "Monthly run limit reached. Upgrade will be available soon." });
+    return;
+  }
+  await finishRunSoon(workspace.id, run.id, body.data.command, kind);
   res.status(202).json(RunOrchestratorCommandResponse.parse(toRun(run)));
 });
 
-router.get("/insights", async (_req, res): Promise<void> => {
-  const insights = await getInsights();
+router.get("/insights", async (req, res): Promise<void> => {
+  const workspace = await getWorkspace(req);
+  const insights = await getInsights(workspace.id);
   res.json(GetInsightsResponse.parse(insights.map(toInsight)));
 });
 
@@ -238,13 +281,25 @@ router.post("/analysis/run", async (req, res): Promise<void> => {
     res.status(400).json({ error: body.error.message });
     return;
   }
-  const run = await createRun(`Проанализировать нишу ${body.data.niche}`, "analysis", stepsFor("analysis"));
-  await finishRunSoon(run.id, run.command, "analysis", body.data.niche);
+  const workspace = await getWorkspace(req);
+  const run = await createRun(
+    workspace.id,
+    workspace.plan,
+    `Проанализировать нишу ${body.data.niche}`,
+    "analysis",
+    stepsFor("analysis"),
+  );
+  if (!run) {
+    res.status(429).json({ error: "Monthly run limit reached. Upgrade will be available soon." });
+    return;
+  }
+  await finishRunSoon(workspace.id, run.id, run.command, "analysis", body.data.niche);
   res.status(202).json(StartAnalysisResponse.parse(toRun(run)));
 });
 
-router.get("/content", async (_req, res): Promise<void> => {
-  const content = await getContent();
+router.get("/content", async (req, res): Promise<void> => {
+  const workspace = await getWorkspace(req);
+  const content = await getContent(workspace.id);
   res.json(GetContentResponse.parse(content));
 });
 
@@ -254,7 +309,18 @@ router.post("/content", async (req, res): Promise<void> => {
     res.status(400).json({ error: body.error.message });
     return;
   }
-  const content = await createContent(body.data.topic, body.data.channels, body.data.tone);
+  const workspace = await getWorkspace(req);
+  const content = await createContent(
+    workspace.id,
+    workspace.plan,
+    body.data.topic,
+    body.data.channels,
+    body.data.tone,
+  );
+  if (!content) {
+    res.status(429).json({ error: "Monthly content limit reached. Upgrade will be available soon." });
+    return;
+  }
   res.status(201).json(GenerateContentResponse.parse(content));
 });
 
@@ -270,7 +336,8 @@ router.post("/content/:id/publish", async (req, res): Promise<void> => {
     res.status(400).json({ error });
     return;
   }
-  const content = await publishContent(params.data.id, body.data.channels);
+  const workspace = await getWorkspace(req);
+  const content = await publishContent(workspace.id, params.data.id, body.data.channels);
   if (!content) {
     res.status(404).json({ error: "Content not found" });
     return;
@@ -278,8 +345,9 @@ router.post("/content/:id/publish", async (req, res): Promise<void> => {
   res.json(PublishContentResponse.parse(content));
 });
 
-router.get("/builder/jobs", async (_req, res): Promise<void> => {
-  const jobs = await getBuilderJobs();
+router.get("/builder/jobs", async (req, res): Promise<void> => {
+  const workspace = await getWorkspace(req);
+  const jobs = await getBuilderJobs(workspace.id);
   res.json(GetBuilderJobsResponse.parse(jobs.map((job) => toJob(job))));
 });
 
@@ -289,8 +357,19 @@ router.post("/builder/jobs", async (req, res): Promise<void> => {
     res.status(400).json({ error: body.error.message });
     return;
   }
-  const job = await createBuilderJob(body.data.kind, body.data.instruction, body.data.packageManager ?? "auto");
-  void executeBuilderJob(job.id);
+  const workspace = await getWorkspace(req);
+  const job = await createBuilderJob(
+    workspace.id,
+    workspace.plan,
+    body.data.kind,
+    body.data.instruction,
+    body.data.packageManager ?? "auto",
+  );
+  if (!job) {
+    res.status(429).json({ error: "Monthly builder jobs limit reached. Upgrade will be available soon." });
+    return;
+  }
+  void executeBuilderJob(workspace.id, job.id);
   res.status(202).json(CreateBuilderJobResponse.parse(toJob(job)));
 });
 
@@ -300,13 +379,20 @@ router.post("/builder/jobs/:id/retry", async (req, res): Promise<void> => {
     res.status(400).json({ error: params.error.message });
     return;
   }
-  const job = await getBuilderJob(params.data.id);
+  const workspace = await getWorkspace(req);
+  const job = await getBuilderJob(workspace.id, params.data.id);
   if (!job) {
     res.status(404).json({ error: "Builder job not found" });
     return;
   }
-  const refreshed = await updateBuilderJob(job.id, "running", Number(job.attempts) + 1, [...(job.logs as string[]), "Manual retry started."]);
-  void executeBuilderJob(job.id);
+  const refreshed = await updateBuilderJob(
+    workspace.id,
+    job.id,
+    "running",
+    Number(job.attempts) + 1,
+    [...(job.logs as string[]), "Manual retry started."],
+  );
+  void executeBuilderJob(workspace.id, job.id);
   res.status(202).json(RetryBuilderJobResponse.parse(toJob(refreshed)));
 });
 

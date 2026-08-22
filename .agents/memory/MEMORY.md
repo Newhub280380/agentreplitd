@@ -1,1 +1,2 @@
 - [OpenAPI codegen compatibility](codegen-zod-compat.md) — keep generated Zod helpers compatible with the workspace's installed Zod major version.
+- [Atomic quota counters](atomic-quota-counters.md) — PostgreSQL upserts are the quota source of truth; qualify the existing-row counter with a table alias.

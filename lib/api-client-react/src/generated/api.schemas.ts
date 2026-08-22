@@ -5,8 +5,66 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+export interface ErrorResponse {
+  error: string;
+}
+
 export interface HealthStatus {
   status: string;
+}
+
+export interface UsageLimits {
+  runs: number;
+  content: number;
+  builderJobs: number;
+}
+
+export type PlanId = typeof PlanId[keyof typeof PlanId];
+
+
+export const PlanId = {
+  free: 'free',
+  starter: 'starter',
+  pro: 'pro',
+} as const;
+
+export interface Plan {
+  id: PlanId;
+  name: string;
+  priceLabel: string;
+  description: string;
+  limits: UsageLimits;
+}
+
+export type WorkspacePlan = typeof WorkspacePlan[keyof typeof WorkspacePlan];
+
+
+export const WorkspacePlan = {
+  free: 'free',
+  starter: 'starter',
+  pro: 'pro',
+} as const;
+
+export interface Workspace {
+  id: string;
+  name: string;
+  plan: WorkspacePlan;
+  createdAt: string;
+}
+
+export interface UsageSummary {
+  periodStart: string;
+  runs: number;
+  content: number;
+  builderJobs: number;
+  limits: UsageLimits;
+}
+
+export interface AccountOverview {
+  workspace: Workspace;
+  plan: Plan;
+  usage: UsageSummary;
+  plans: Plan[];
 }
 
 export type DashboardSummarySystemStatus = typeof DashboardSummarySystemStatus[keyof typeof DashboardSummarySystemStatus];
@@ -294,4 +352,14 @@ export interface BuilderJob {
   createdAt: string;
   logs: string[];
 }
+
+/**
+ * Sign-in required
+ */
+export type UnauthorizedResponse = ErrorResponse;
+
+/**
+ * The workspace has reached its monthly limit for this resource.
+ */
+export type QuotaExceededResponse = ErrorResponse;
 
