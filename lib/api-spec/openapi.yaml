@@ -10,6 +10,16 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: orchestrator
+    description: Unified orchestration and run history
+  - name: analytics
+    description: Market intelligence, trends, and insight extraction
+  - name: content
+    description: AI content generation and publishing
+  - name: builder
+    description: Dependency installation and application assembly
+  - name: system
+    description: Agent and integration status
 paths:
   /healthz:
     get:
@@ -24,7 +34,246 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /dashboard/summary:
+    get:
+      operationId: getDashboardSummary
+      tags: [orchestrator]
+      summary: Get command center summary
+      responses:
+        "200":
+          description: Summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardSummary"
+  /activities:
+    get:
+      operationId: getActivities
+      tags: [orchestrator]
+      summary: Get recent system activity
+      responses:
+        "200":
+          description: Activity feed
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Activity"
+  /agents:
+    get:
+      operationId: getAgents
+      tags: [system]
+      summary: List agent statuses
+      responses:
+        "200":
+          description: Agent statuses
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AgentStatus"
+  /connections:
+    get:
+      operationId: getConnections
+      tags: [system]
+      summary: List configured external service adapters
+      responses:
+        "200":
+          description: Connection statuses
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ConnectionStatus"
+  /runs:
+    get:
+      operationId: getRuns
+      tags: [orchestrator]
+      summary: List orchestration runs
+      responses:
+        "200":
+          description: Run history
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Run"
+  /runs/{id}:
+    get:
+      operationId: getRun
+      tags: [orchestrator]
+      summary: Get orchestration run
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          description: Run
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Run"
+        "404":
+          description: Run not found
+  /orchestrator/command:
+    post:
+      operationId: runOrchestratorCommand
+      tags: [orchestrator]
+      summary: Execute a natural-language command
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CommandInput"
+      responses:
+        "202":
+          description: Run started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Run"
+        "400":
+          description: Invalid command
+  /insights:
+    get:
+      operationId: getInsights
+      tags: [analytics]
+      summary: List market insights
+      responses:
+        "200":
+          description: Insights
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Insight"
+  /analysis/run:
+    post:
+      operationId: startAnalysis
+      tags: [analytics]
+      summary: Analyze a niche across video, social, and web sources
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AnalysisInput"
+      responses:
+        "202":
+          description: Analysis started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Run"
+  /content:
+    get:
+      operationId: getContent
+      tags: [content]
+      summary: List generated content
+      responses:
+        "200":
+          description: Content drafts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ContentItem"
+    post:
+      operationId: generateContent
+      tags: [content]
+      summary: Generate content from market insights
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ContentInput"
+      responses:
+        "201":
+          description: Generated content
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContentItem"
+  /content/{id}/publish:
+    post:
+      operationId: publishContent
+      tags: [content]
+      summary: Publish content to selected channels
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PublishInput"
+      responses:
+        "200":
+          description: Published content
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContentItem"
+  /builder/jobs:
+    get:
+      operationId: getBuilderJobs
+      tags: [builder]
+      summary: List builder jobs
+      responses:
+        "200":
+          description: Builder jobs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/BuilderJob"
+    post:
+      operationId: createBuilderJob
+      tags: [builder]
+      summary: Install a dependency or assemble an app
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BuilderInput"
+      responses:
+        "202":
+          description: Builder job started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BuilderJob"
+  /builder/jobs/{id}/retry:
+    post:
+      operationId: retryBuilderJob
+      tags: [builder]
+      summary: Retry a failed builder job
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "202":
+          description: Retry started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BuilderJob"
 components:
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
   schemas:
     HealthStatus:
       type: object
@@ -33,4 +282,141 @@ components:
           type: string
       required:
         - status
+    DashboardSummary:
+      type: object
+      required: [activeRuns, insights, drafts, published, connectedChannels, systemStatus]
+      properties:
+        activeRuns: { type: number }
+        insights: { type: number }
+        drafts: { type: number }
+        published: { type: number }
+        connectedChannels: { type: number }
+        systemStatus: { type: string, enum: [operational, degraded, offline] }
+    Activity:
+      type: object
+      required: [id, timestamp, agent, title, detail, status]
+      properties:
+        id: { type: string }
+        timestamp: { type: string, format: date-time }
+        agent: { type: string }
+        title: { type: string }
+        detail: { type: string }
+        status: { type: string, enum: [success, running, warning, failed] }
+    AgentStatus:
+      type: object
+      required: [id, name, role, status, description, metric]
+      properties:
+        id: { type: string, enum: [analyst, builder, seller, orchestrator] }
+        name: { type: string }
+        role: { type: string }
+        status: { type: string, enum: [online, running, attention, offline] }
+        description: { type: string }
+        metric: { type: string }
+    ConnectionStatus:
+      type: object
+      required: [id, provider, category, status, detail]
+      properties:
+        id: { type: string }
+        provider: { type: string }
+        category: { type: string, enum: [source, channel, payment, memory, ai] }
+        status: { type: string, enum: [connected, configured, needs_setup, unavailable] }
+        detail: { type: string }
+    Run:
+      type: object
+      required: [id, command, kind, status, startedAt, steps]
+      properties:
+        id: { type: string }
+        command: { type: string }
+        kind: { type: string, enum: [analysis, publishing, builder, full_pipeline] }
+        status: { type: string, enum: [queued, running, completed, failed] }
+        startedAt: { type: string, format: date-time }
+        finishedAt: { type: ["string", "null"], format: date-time }
+        summary: { type: ["string", "null"] }
+        steps:
+          type: array
+          items:
+            $ref: "#/components/schemas/RunStep"
+    RunStep:
+      type: object
+      required: [agent, label, status]
+      properties:
+        agent: { type: string }
+        label: { type: string }
+        status: { type: string, enum: [queued, running, completed, failed] }
+        detail: { type: ["string", "null"] }
+    CommandInput:
+      type: object
+      required: [command]
+      properties:
+        command: { type: string, minLength: 3 }
+    AnalysisInput:
+      type: object
+      required: [niche]
+      properties:
+        niche: { type: string, minLength: 2 }
+        sources:
+          type: array
+          items: { type: string, enum: [youtube, telegram, tiktok, google] }
+    Insight:
+      type: object
+      required: [id, trend, reach, emotion, conclusion, source, score]
+      properties:
+        id: { type: string }
+        trend: { type: string }
+        reach: { type: string }
+        emotion: { type: string }
+        conclusion: { type: string }
+        source: { type: string }
+        score: { type: number, minimum: 0, maximum: 100 }
+        createdAt: { type: string, format: date-time }
+    ContentInput:
+      type: object
+      required: [topic, channels]
+      properties:
+        topic: { type: string, minLength: 2 }
+        channels:
+          type: array
+          items: { type: string, enum: [telegram, vk, instagram] }
+        tone: { type: string }
+    ContentItem:
+      type: object
+      required: [id, title, body, channels, status, createdAt]
+      properties:
+        id: { type: string }
+        title: { type: string }
+        body: { type: string }
+        channels:
+          type: array
+          items: { type: string }
+        status: { type: string, enum: [draft, scheduled, published, failed] }
+        imageUrl: { type: ["string", "null"] }
+        createdAt: { type: string, format: date-time }
+    PublishInput:
+      type: object
+      required: [channels]
+      properties:
+        channels:
+          type: array
+          items: { type: string, enum: [telegram, vk, instagram] }
+    BuilderInput:
+      type: object
+      required: [kind, instruction]
+      properties:
+        kind: { type: string, enum: [install, assemble] }
+        instruction: { type: string, minLength: 3 }
+        packageManager: { type: string, enum: [pip, npm, pnpm, auto] }
+    BuilderJob:
+      type: object
+      required: [id, kind, instruction, status, attempts, createdAt, logs]
+      properties:
+        id: { type: string }
+        kind: { type: string, enum: [install, assemble] }
+        instruction: { type: string }
+        packageManager: { type: string }
+        status: { type: string, enum: [queued, running, completed, failed] }
+        attempts: { type: number }
+        createdAt: { type: string, format: date-time }
+        logs:
+          type: array
+          items: { type: string }
 

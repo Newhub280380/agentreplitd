@@ -1,0 +1,1 @@
+- [OpenAPI codegen compatibility](codegen-zod-compat.md) — keep generated Zod helpers compatible with the workspace's installed Zod major version.
