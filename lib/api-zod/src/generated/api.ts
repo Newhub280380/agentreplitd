@@ -31,6 +31,69 @@ export const GetDashboardSummaryResponse = zod.object({
 
 
 /**
+ * @summary Get the signed-in customer's workspace, plan, and usage
+ */
+export const GetAccountOverviewResponse = zod.object({
+  "workspace": zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "plan": zod.enum(['free', 'starter', 'pro']),
+  "createdAt": zod.coerce.date()
+}),
+  "plan": zod.object({
+  "id": zod.enum(['free', 'starter', 'pro']),
+  "name": zod.string(),
+  "priceLabel": zod.string(),
+  "description": zod.string(),
+  "limits": zod.object({
+  "runs": zod.number(),
+  "content": zod.number(),
+  "builderJobs": zod.number()
+})
+}),
+  "usage": zod.object({
+  "periodStart": zod.coerce.date(),
+  "runs": zod.number(),
+  "content": zod.number(),
+  "builderJobs": zod.number(),
+  "limits": zod.object({
+  "runs": zod.number(),
+  "content": zod.number(),
+  "builderJobs": zod.number()
+})
+}),
+  "plans": zod.array(zod.object({
+  "id": zod.enum(['free', 'starter', 'pro']),
+  "name": zod.string(),
+  "priceLabel": zod.string(),
+  "description": zod.string(),
+  "limits": zod.object({
+  "runs": zod.number(),
+  "content": zod.number(),
+  "builderJobs": zod.number()
+})
+}))
+})
+
+
+/**
+ * @summary List available product plans
+ */
+export const GetPlansResponseItem = zod.object({
+  "id": zod.enum(['free', 'starter', 'pro']),
+  "name": zod.string(),
+  "priceLabel": zod.string(),
+  "description": zod.string(),
+  "limits": zod.object({
+  "runs": zod.number(),
+  "content": zod.number(),
+  "builderJobs": zod.number()
+})
+})
+export const GetPlansResponse = zod.array(GetPlansResponseItem)
+
+
+/**
  * @summary Get recent system activity
  */
 export const GetActivitiesResponseItem = zod.object({

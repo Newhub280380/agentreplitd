@@ -1,4 +1,5 @@
 import { ReactNode } from "react"
+import { useClerk, useUser } from "@clerk/react"
 import { Link, useRoute } from "wouter"
 import { 
   TerminalSquare, 
@@ -28,6 +29,9 @@ const NavItem = ({ href, icon: Icon, children }: { href: string, icon: any, chil
 
 export function Layout({ children }: { children: ReactNode }) {
   const { data: health } = useHealthCheck();
+  const { user } = useUser();
+  const { signOut } = useClerk();
+  const displayName = user?.fullName || user?.primaryEmailAddress?.emailAddress || "Клиент";
 
   return (
     <div className="flex h-screen bg-background font-sans text-foreground selection:bg-primary selection:text-white overflow-hidden">
@@ -58,7 +62,7 @@ export function Layout({ children }: { children: ReactNode }) {
           <h1 className="font-display font-bold uppercase tracking-widest text-sm text-zinc-800">
             Operations Console
           </h1>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-4">
             <span className="font-mono text-xs text-zinc-500 uppercase">SYS_STATUS:</span>
             {health ? (
               <span className="flex items-center gap-1.5 font-mono text-xs font-bold text-emerald-600">
@@ -71,6 +75,21 @@ export function Layout({ children }: { children: ReactNode }) {
                 PENDING
               </span>
             )}
+            <div className="hidden items-center gap-2 border-l pl-4 sm:flex">
+              <div className="grid h-7 w-7 place-items-center rounded-full bg-zinc-950 font-mono text-xs font-bold text-primary">
+                {displayName.slice(0, 1).toUpperCase()}
+              </div>
+              <div className="max-w-36">
+                <p className="truncate font-display text-xs font-bold uppercase tracking-wide text-zinc-800">{displayName}</p>
+                <button
+                  type="button"
+                  onClick={() => signOut({ redirectUrl: import.meta.env.BASE_URL })}
+                  className="font-mono text-[10px] uppercase tracking-wider text-zinc-500 hover:text-primary"
+                >
+                  Выйти
+                </button>
+              </div>
+            </div>
           </div>
         </header>
         <div className="flex-1 overflow-auto p-6 bg-zinc-100/50">

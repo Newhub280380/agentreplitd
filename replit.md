@@ -19,15 +19,16 @@
 - API/control plane: Express 5
 - Agent runtime: Python 3.11, FastAPI, LangGraph
 - DB: PostgreSQL + Drizzle ORM
+- Auth: Replit-managed Clerk with branded in-app sign-in and sign-up pages
 - Validation: Zod (`zod/v4`), `drizzle-zod`
 - API codegen: Orval (from OpenAPI spec)
 - Build: esbuild (CJS bundle)
 
 ## Where things live
 
-- `artifacts/agent-multitool-360` — React command center and routes for Command, Analytics, Content, Builder, Settings.
-- `artifacts/api-server/src/routes/agent360.ts` — typed REST endpoints for the four-agent system.
-- `artifacts/api-server/src/lib/agent360-store.ts` — durable PostgreSQL-backed store, seed data, activity journal, and builder logging.
+- `artifacts/agent-multitool-360` — SaaS landing page, Clerk account flow, and authenticated command center.
+- `artifacts/api-server/src/routes/agent360.ts` — typed REST endpoints, ownership enforcement, quotas, and plan data.
+- `artifacts/api-server/src/lib/agent360-store.ts` — PostgreSQL store for workspaces, quotas, agent data, and activity journal.
 - `services/agent-engine/main.py` — FastAPI + LangGraph runtime with YouTube/yt-dlp, hybrid web search, and LLM summarization adapters.
 - `lib/api-spec/openapi.yaml` — source-of-truth API contract; generated clients live under `lib/api-client-react` and `lib/api-zod`.
 - `lib/db/src/schema/agent360.ts` — PostgreSQL tables for runs, insights, content, builder jobs, activity, and memories.
@@ -39,10 +40,12 @@
 - External channels expose explicit `needs_setup` status until their accounts are authorized; no tokens are embedded in source.
 - Builder instructions are allowlist-validated and staged by default; arbitrary shell commands are never accepted from the UI.
 - The OpenAPI contract is regenerated before client or server types are consumed.
+- Each Clerk user maps to one local workspace. All agent-owned records are filtered by that workspace in the data store, not merely hidden in the UI.
+- Tiers are product configuration only until a payment provider is intentionally selected and connected. The current product never creates a charge.
 
 ## Product
 
-The command center lets operators run natural-language workflows, inspect the status of Analyst, Builder, Seller, and Orchestrator agents, review trend insights, generate and publish content, inspect builder logs/retries, and see which service adapters are connected.
+Guests see a product landing page and can create an account. Every account receives an isolated workspace with a Basic plan and monthly usage limits for runs, content, and builder jobs. Authenticated users access the command center to run natural-language workflows, inspect agents, review trend insights, generate content, inspect builder logs, and see account usage.
 
 ## User preferences
 
@@ -53,6 +56,8 @@ _Populate as you build — explicit user instructions worth remembering across s
 - The Python runtime must be running for live collection and LLM summaries; the control plane has a safe fallback if it is restarting.
 - Telegram, VK, payment, and search adapters are intentionally visible as `needs_setup` until a provider connection or protected env configuration exists.
 - Run `pnpm --filter @workspace/api-spec run codegen` after every OpenAPI change.
+- Clerk browser sessions use same-origin cookies. Do not add bearer-token plumbing to the web client; protect server routes with Clerk middleware instead.
+- Clerk has isolated Development and Production user directories; test accounts created in preview are not production customers.
 
 ## Pointers
 

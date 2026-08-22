@@ -7,6 +7,8 @@ info:
 servers:
   - url: /api
     description: Base API path
+security:
+  - ClerkSession: []
 tags:
   - name: health
     description: Health operations
@@ -20,9 +22,12 @@ tags:
     description: Dependency installation and application assembly
   - name: system
     description: Agent and integration status
+  - name: account
+    description: Customer workspace, plans, and monthly usage
 paths:
   /healthz:
     get:
+      security: []
       operationId: healthCheck
       tags: [health]
       summary: Health check
@@ -46,6 +51,37 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/DashboardSummary"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /account:
+    get:
+      operationId: getAccountOverview
+      tags: [account]
+      summary: Get the signed-in customer's workspace, plan, and usage
+      responses:
+        "200":
+          description: Account overview
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccountOverview"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /plans:
+    get:
+      security: []
+      operationId: getPlans
+      tags: [account]
+      summary: List available product plans
+      responses:
+        "200":
+          description: Plans
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Plan"
   /activities:
     get:
       operationId: getActivities
@@ -60,6 +96,8 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/Activity"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
   /agents:
     get:
       operationId: getAgents
@@ -74,6 +112,8 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/AgentStatus"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
   /connections:
     get:
       operationId: getConnections
@@ -88,6 +128,8 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/ConnectionStatus"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
   /runs:
     get:
       operationId: getRuns
@@ -102,6 +144,8 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/Run"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
   /runs/{id}:
     get:
       operationId: getRun
@@ -118,6 +162,8 @@ paths:
                 $ref: "#/components/schemas/Run"
         "404":
           description: Run not found
+        "401":
+          $ref: "#/components/responses/Unauthorized"
   /orchestrator/command:
     post:
       operationId: runOrchestratorCommand
@@ -138,6 +184,10 @@ paths:
                 $ref: "#/components/schemas/Run"
         "400":
           description: Invalid command
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/QuotaExceeded"
   /insights:
     get:
       operationId: getInsights
@@ -152,6 +202,8 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/Insight"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
   /analysis/run:
     post:
       operationId: startAnalysis
@@ -170,6 +222,10 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Run"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/QuotaExceeded"
   /content:
     get:
       operationId: getContent
@@ -184,6 +240,8 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/ContentItem"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
     post:
       operationId: generateContent
       tags: [content]
@@ -201,6 +259,10 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ContentItem"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/QuotaExceeded"
   /content/{id}/publish:
     post:
       operationId: publishContent
@@ -221,6 +283,10 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ContentItem"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Content not found
   /builder/jobs:
     get:
       operationId: getBuilderJobs
@@ -235,6 +301,8 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/BuilderJob"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
     post:
       operationId: createBuilderJob
       tags: [builder]
@@ -252,6 +320,10 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/BuilderJob"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/QuotaExceeded"
   /builder/jobs/{id}/retry:
     post:
       operationId: retryBuilderJob
@@ -266,7 +338,30 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/BuilderJob"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Builder job not found
 components:
+  securitySchemes:
+    ClerkSession:
+      type: http
+      scheme: bearer
+      bearerFormat: Clerk session token
+      description: Browser clients normally authenticate through Clerk-managed same-origin sessions.
+  responses:
+    Unauthorized:
+      description: Sign-in required
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    QuotaExceeded:
+      description: The workspace has reached its monthly limit for this resource.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
   parameters:
     Id:
       name: id
@@ -275,6 +370,12 @@ components:
       schema:
         type: string
   schemas:
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
     HealthStatus:
       type: object
       properties:
@@ -282,6 +383,55 @@ components:
           type: string
       required:
         - status
+    UsageLimits:
+      type: object
+      required: [runs, content, builderJobs]
+      properties:
+        runs: { type: number }
+        content: { type: number }
+        builderJobs: { type: number }
+    Plan:
+      type: object
+      required: [id, name, priceLabel, description, limits]
+      properties:
+        id: { type: string, enum: [free, starter, pro] }
+        name: { type: string }
+        priceLabel: { type: string }
+        description: { type: string }
+        limits:
+          $ref: "#/components/schemas/UsageLimits"
+    Workspace:
+      type: object
+      required: [id, name, plan, createdAt]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        plan: { type: string, enum: [free, starter, pro] }
+        createdAt: { type: string, format: date-time }
+    UsageSummary:
+      type: object
+      required: [periodStart, runs, content, builderJobs, limits]
+      properties:
+        periodStart: { type: string, format: date-time }
+        runs: { type: number }
+        content: { type: number }
+        builderJobs: { type: number }
+        limits:
+          $ref: "#/components/schemas/UsageLimits"
+    AccountOverview:
+      type: object
+      required: [workspace, plan, usage, plans]
+      properties:
+        workspace:
+          $ref: "#/components/schemas/Workspace"
+        plan:
+          $ref: "#/components/schemas/Plan"
+        usage:
+          $ref: "#/components/schemas/UsageSummary"
+        plans:
+          type: array
+          items:
+            $ref: "#/components/schemas/Plan"
     DashboardSummary:
       type: object
       required: [activeRuns, insights, drafts, published, connectedChannels, systemStatus]

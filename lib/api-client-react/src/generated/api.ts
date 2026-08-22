@@ -20,6 +20,7 @@ import type {
 } from '@tanstack/react-query';
 
 import type {
+  AccountOverview,
   Activity,
   AgentStatus,
   AnalysisInput,
@@ -32,8 +33,11 @@ import type {
   DashboardSummary,
   HealthStatus,
   Insight,
+  Plan,
   PublishInput,
-  Run
+  QuotaExceededResponse,
+  Run,
+  UnauthorizedResponse
 } from './api.schemas';
 
 import { customFetch } from '../custom-fetch';
@@ -174,7 +178,7 @@ export const getGetDashboardSummaryQueryKey = () => {
     }
 
 
-export const getGetDashboardSummaryQueryOptions = <TData = Awaited<ReturnType<typeof getDashboardSummary>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getDashboardSummary>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export const getGetDashboardSummaryQueryOptions = <TData = Awaited<ReturnType<typeof getDashboardSummary>>, TError = ErrorType<UnauthorizedResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getDashboardSummary>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
@@ -193,19 +197,173 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 }
 
 export type GetDashboardSummaryQueryResult = NonNullable<Awaited<ReturnType<typeof getDashboardSummary>>>
-export type GetDashboardSummaryQueryError = ErrorType<unknown>
+export type GetDashboardSummaryQueryError = ErrorType<UnauthorizedResponse>
 
 
 /**
  * @summary Get command center summary
  */
 
-export function useGetDashboardSummary<TData = Awaited<ReturnType<typeof getDashboardSummary>>, TError = ErrorType<unknown>>(
+export function useGetDashboardSummary<TData = Awaited<ReturnType<typeof getDashboardSummary>>, TError = ErrorType<UnauthorizedResponse>>(
   options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getDashboardSummary>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetDashboardSummaryQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetAccountOverviewUrl = () => {
+
+
+
+
+  return `/api/account`
+}
+
+/**
+ * @summary Get the signed-in customer's workspace, plan, and usage
+ */
+export const getAccountOverview = async ( options?: Parameters<typeof customFetch>[1]): Promise<AccountOverview> => {
+
+  return customFetch<AccountOverview>(getGetAccountOverviewUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetAccountOverviewQueryKey = () => {
+    return [
+    `/api/account`
+    ] as const;
+    }
+
+
+export const getGetAccountOverviewQueryOptions = <TData = Awaited<ReturnType<typeof getAccountOverview>>, TError = ErrorType<UnauthorizedResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAccountOverview>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetAccountOverviewQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getAccountOverview>>> = ({ signal }) => getAccountOverview({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getAccountOverview>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetAccountOverviewQueryResult = NonNullable<Awaited<ReturnType<typeof getAccountOverview>>>
+export type GetAccountOverviewQueryError = ErrorType<UnauthorizedResponse>
+
+
+/**
+ * @summary Get the signed-in customer's workspace, plan, and usage
+ */
+
+export function useGetAccountOverview<TData = Awaited<ReturnType<typeof getAccountOverview>>, TError = ErrorType<UnauthorizedResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAccountOverview>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetAccountOverviewQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetPlansUrl = () => {
+
+
+
+
+  return `/api/plans`
+}
+
+/**
+ * @summary List available product plans
+ */
+export const getPlans = async ( options?: Parameters<typeof customFetch>[1]): Promise<Plan[]> => {
+
+  return customFetch<Plan[]>(getGetPlansUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetPlansQueryKey = () => {
+    return [
+    `/api/plans`
+    ] as const;
+    }
+
+
+export const getGetPlansQueryOptions = <TData = Awaited<ReturnType<typeof getPlans>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPlans>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetPlansQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getPlans>>> = ({ signal }) => getPlans({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getPlans>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetPlansQueryResult = NonNullable<Awaited<ReturnType<typeof getPlans>>>
+export type GetPlansQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List available product plans
+ */
+
+export function useGetPlans<TData = Awaited<ReturnType<typeof getPlans>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPlans>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetPlansQueryOptions(options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 
@@ -251,7 +409,7 @@ export const getGetActivitiesQueryKey = () => {
     }
 
 
-export const getGetActivitiesQueryOptions = <TData = Awaited<ReturnType<typeof getActivities>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getActivities>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export const getGetActivitiesQueryOptions = <TData = Awaited<ReturnType<typeof getActivities>>, TError = ErrorType<UnauthorizedResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getActivities>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
@@ -270,14 +428,14 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 }
 
 export type GetActivitiesQueryResult = NonNullable<Awaited<ReturnType<typeof getActivities>>>
-export type GetActivitiesQueryError = ErrorType<unknown>
+export type GetActivitiesQueryError = ErrorType<UnauthorizedResponse>
 
 
 /**
  * @summary Get recent system activity
  */
 
-export function useGetActivities<TData = Awaited<ReturnType<typeof getActivities>>, TError = ErrorType<unknown>>(
+export function useGetActivities<TData = Awaited<ReturnType<typeof getActivities>>, TError = ErrorType<UnauthorizedResponse>>(
   options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getActivities>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
@@ -328,7 +486,7 @@ export const getGetAgentsQueryKey = () => {
     }
 
 
-export const getGetAgentsQueryOptions = <TData = Awaited<ReturnType<typeof getAgents>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAgents>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export const getGetAgentsQueryOptions = <TData = Awaited<ReturnType<typeof getAgents>>, TError = ErrorType<UnauthorizedResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAgents>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
@@ -347,14 +505,14 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 }
 
 export type GetAgentsQueryResult = NonNullable<Awaited<ReturnType<typeof getAgents>>>
-export type GetAgentsQueryError = ErrorType<unknown>
+export type GetAgentsQueryError = ErrorType<UnauthorizedResponse>
 
 
 /**
  * @summary List agent statuses
  */
 
-export function useGetAgents<TData = Awaited<ReturnType<typeof getAgents>>, TError = ErrorType<unknown>>(
+export function useGetAgents<TData = Awaited<ReturnType<typeof getAgents>>, TError = ErrorType<UnauthorizedResponse>>(
   options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAgents>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
@@ -405,7 +563,7 @@ export const getGetConnectionsQueryKey = () => {
     }
 
 
-export const getGetConnectionsQueryOptions = <TData = Awaited<ReturnType<typeof getConnections>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getConnections>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export const getGetConnectionsQueryOptions = <TData = Awaited<ReturnType<typeof getConnections>>, TError = ErrorType<UnauthorizedResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getConnections>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
@@ -424,14 +582,14 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 }
 
 export type GetConnectionsQueryResult = NonNullable<Awaited<ReturnType<typeof getConnections>>>
-export type GetConnectionsQueryError = ErrorType<unknown>
+export type GetConnectionsQueryError = ErrorType<UnauthorizedResponse>
 
 
 /**
  * @summary List configured external service adapters
  */
 
-export function useGetConnections<TData = Awaited<ReturnType<typeof getConnections>>, TError = ErrorType<unknown>>(
+export function useGetConnections<TData = Awaited<ReturnType<typeof getConnections>>, TError = ErrorType<UnauthorizedResponse>>(
   options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getConnections>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
@@ -482,7 +640,7 @@ export const getGetRunsQueryKey = () => {
     }
 
 
-export const getGetRunsQueryOptions = <TData = Awaited<ReturnType<typeof getRuns>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getRuns>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export const getGetRunsQueryOptions = <TData = Awaited<ReturnType<typeof getRuns>>, TError = ErrorType<UnauthorizedResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getRuns>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
@@ -501,14 +659,14 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 }
 
 export type GetRunsQueryResult = NonNullable<Awaited<ReturnType<typeof getRuns>>>
-export type GetRunsQueryError = ErrorType<unknown>
+export type GetRunsQueryError = ErrorType<UnauthorizedResponse>
 
 
 /**
  * @summary List orchestration runs
  */
 
-export function useGetRuns<TData = Awaited<ReturnType<typeof getRuns>>, TError = ErrorType<unknown>>(
+export function useGetRuns<TData = Awaited<ReturnType<typeof getRuns>>, TError = ErrorType<UnauthorizedResponse>>(
   options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getRuns>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
@@ -559,7 +717,7 @@ export const getGetRunQueryKey = (id: string,) => {
     }
 
 
-export const getGetRunQueryOptions = <TData = Awaited<ReturnType<typeof getRun>>, TError = ErrorType<void>>(id: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getRun>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export const getGetRunQueryOptions = <TData = Awaited<ReturnType<typeof getRun>>, TError = ErrorType<UnauthorizedResponse | void>>(id: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getRun>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
@@ -578,14 +736,14 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 }
 
 export type GetRunQueryResult = NonNullable<Awaited<ReturnType<typeof getRun>>>
-export type GetRunQueryError = ErrorType<void>
+export type GetRunQueryError = ErrorType<UnauthorizedResponse | void>
 
 
 /**
  * @summary Get orchestration run
  */
 
-export function useGetRun<TData = Awaited<ReturnType<typeof getRun>>, TError = ErrorType<void>>(
+export function useGetRun<TData = Awaited<ReturnType<typeof getRun>>, TError = ErrorType<UnauthorizedResponse | void>>(
  id: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getRun>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
@@ -629,7 +787,7 @@ export const runOrchestratorCommand = async (commandInput: CommandInput, options
 
 
 
-export const getRunOrchestratorCommandMutationOptions = <TError = ErrorType<void>,
+export const getRunOrchestratorCommandMutationOptions = <TError = ErrorType<void | UnauthorizedResponse | QuotaExceededResponse>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof runOrchestratorCommand>>, TError,{data: BodyType<CommandInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof runOrchestratorCommand>>, TError,{data: BodyType<CommandInput>}, TContext> => {
 
@@ -658,12 +816,12 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
     export type RunOrchestratorCommandMutationResult = NonNullable<Awaited<ReturnType<typeof runOrchestratorCommand>>>
     export type RunOrchestratorCommandMutationBody = BodyType<CommandInput>
-    export type RunOrchestratorCommandMutationError = ErrorType<void>
+    export type RunOrchestratorCommandMutationError = ErrorType<void | UnauthorizedResponse | QuotaExceededResponse>
 
     /**
  * @summary Execute a natural-language command
  */
-export const useRunOrchestratorCommand = <TError = ErrorType<void>,
+export const useRunOrchestratorCommand = <TError = ErrorType<void | UnauthorizedResponse | QuotaExceededResponse>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof runOrchestratorCommand>>, TError,{data: BodyType<CommandInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof runOrchestratorCommand>>,
@@ -707,7 +865,7 @@ export const getGetInsightsQueryKey = () => {
     }
 
 
-export const getGetInsightsQueryOptions = <TData = Awaited<ReturnType<typeof getInsights>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getInsights>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export const getGetInsightsQueryOptions = <TData = Awaited<ReturnType<typeof getInsights>>, TError = ErrorType<UnauthorizedResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getInsights>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
@@ -726,14 +884,14 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 }
 
 export type GetInsightsQueryResult = NonNullable<Awaited<ReturnType<typeof getInsights>>>
-export type GetInsightsQueryError = ErrorType<unknown>
+export type GetInsightsQueryError = ErrorType<UnauthorizedResponse>
 
 
 /**
  * @summary List market insights
  */
 
-export function useGetInsights<TData = Awaited<ReturnType<typeof getInsights>>, TError = ErrorType<unknown>>(
+export function useGetInsights<TData = Awaited<ReturnType<typeof getInsights>>, TError = ErrorType<UnauthorizedResponse>>(
   options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getInsights>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
@@ -777,7 +935,7 @@ export const startAnalysis = async (analysisInput: AnalysisInput, options?: Para
 
 
 
-export const getStartAnalysisMutationOptions = <TError = ErrorType<unknown>,
+export const getStartAnalysisMutationOptions = <TError = ErrorType<UnauthorizedResponse | QuotaExceededResponse>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof startAnalysis>>, TError,{data: BodyType<AnalysisInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof startAnalysis>>, TError,{data: BodyType<AnalysisInput>}, TContext> => {
 
@@ -806,12 +964,12 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
     export type StartAnalysisMutationResult = NonNullable<Awaited<ReturnType<typeof startAnalysis>>>
     export type StartAnalysisMutationBody = BodyType<AnalysisInput>
-    export type StartAnalysisMutationError = ErrorType<unknown>
+    export type StartAnalysisMutationError = ErrorType<UnauthorizedResponse | QuotaExceededResponse>
 
     /**
  * @summary Analyze a niche across video, social, and web sources
  */
-export const useStartAnalysis = <TError = ErrorType<unknown>,
+export const useStartAnalysis = <TError = ErrorType<UnauthorizedResponse | QuotaExceededResponse>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof startAnalysis>>, TError,{data: BodyType<AnalysisInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof startAnalysis>>,
@@ -855,7 +1013,7 @@ export const getGetContentQueryKey = () => {
     }
 
 
-export const getGetContentQueryOptions = <TData = Awaited<ReturnType<typeof getContent>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getContent>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export const getGetContentQueryOptions = <TData = Awaited<ReturnType<typeof getContent>>, TError = ErrorType<UnauthorizedResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getContent>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
@@ -874,14 +1032,14 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 }
 
 export type GetContentQueryResult = NonNullable<Awaited<ReturnType<typeof getContent>>>
-export type GetContentQueryError = ErrorType<unknown>
+export type GetContentQueryError = ErrorType<UnauthorizedResponse>
 
 
 /**
  * @summary List generated content
  */
 
-export function useGetContent<TData = Awaited<ReturnType<typeof getContent>>, TError = ErrorType<unknown>>(
+export function useGetContent<TData = Awaited<ReturnType<typeof getContent>>, TError = ErrorType<UnauthorizedResponse>>(
   options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getContent>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
@@ -925,7 +1083,7 @@ export const generateContent = async (contentInput: ContentInput, options?: Para
 
 
 
-export const getGenerateContentMutationOptions = <TError = ErrorType<unknown>,
+export const getGenerateContentMutationOptions = <TError = ErrorType<UnauthorizedResponse | QuotaExceededResponse>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof generateContent>>, TError,{data: BodyType<ContentInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof generateContent>>, TError,{data: BodyType<ContentInput>}, TContext> => {
 
@@ -954,12 +1112,12 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
     export type GenerateContentMutationResult = NonNullable<Awaited<ReturnType<typeof generateContent>>>
     export type GenerateContentMutationBody = BodyType<ContentInput>
-    export type GenerateContentMutationError = ErrorType<unknown>
+    export type GenerateContentMutationError = ErrorType<UnauthorizedResponse | QuotaExceededResponse>
 
     /**
  * @summary Generate content from market insights
  */
-export const useGenerateContent = <TError = ErrorType<unknown>,
+export const useGenerateContent = <TError = ErrorType<UnauthorizedResponse | QuotaExceededResponse>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof generateContent>>, TError,{data: BodyType<ContentInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof generateContent>>,
@@ -997,7 +1155,7 @@ export const publishContent = async (id: string,
 
 
 
-export const getPublishContentMutationOptions = <TError = ErrorType<unknown>,
+export const getPublishContentMutationOptions = <TError = ErrorType<UnauthorizedResponse | void>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof publishContent>>, TError,{id: string;data: BodyType<PublishInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof publishContent>>, TError,{id: string;data: BodyType<PublishInput>}, TContext> => {
 
@@ -1026,12 +1184,12 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
     export type PublishContentMutationResult = NonNullable<Awaited<ReturnType<typeof publishContent>>>
     export type PublishContentMutationBody = BodyType<PublishInput>
-    export type PublishContentMutationError = ErrorType<unknown>
+    export type PublishContentMutationError = ErrorType<UnauthorizedResponse | void>
 
     /**
  * @summary Publish content to selected channels
  */
-export const usePublishContent = <TError = ErrorType<unknown>,
+export const usePublishContent = <TError = ErrorType<UnauthorizedResponse | void>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof publishContent>>, TError,{id: string;data: BodyType<PublishInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof publishContent>>,
@@ -1075,7 +1233,7 @@ export const getGetBuilderJobsQueryKey = () => {
     }
 
 
-export const getGetBuilderJobsQueryOptions = <TData = Awaited<ReturnType<typeof getBuilderJobs>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getBuilderJobs>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export const getGetBuilderJobsQueryOptions = <TData = Awaited<ReturnType<typeof getBuilderJobs>>, TError = ErrorType<UnauthorizedResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getBuilderJobs>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
@@ -1094,14 +1252,14 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 }
 
 export type GetBuilderJobsQueryResult = NonNullable<Awaited<ReturnType<typeof getBuilderJobs>>>
-export type GetBuilderJobsQueryError = ErrorType<unknown>
+export type GetBuilderJobsQueryError = ErrorType<UnauthorizedResponse>
 
 
 /**
  * @summary List builder jobs
  */
 
-export function useGetBuilderJobs<TData = Awaited<ReturnType<typeof getBuilderJobs>>, TError = ErrorType<unknown>>(
+export function useGetBuilderJobs<TData = Awaited<ReturnType<typeof getBuilderJobs>>, TError = ErrorType<UnauthorizedResponse>>(
   options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getBuilderJobs>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
@@ -1145,7 +1303,7 @@ export const createBuilderJob = async (builderInput: BuilderInput, options?: Par
 
 
 
-export const getCreateBuilderJobMutationOptions = <TError = ErrorType<unknown>,
+export const getCreateBuilderJobMutationOptions = <TError = ErrorType<UnauthorizedResponse | QuotaExceededResponse>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createBuilderJob>>, TError,{data: BodyType<BuilderInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof createBuilderJob>>, TError,{data: BodyType<BuilderInput>}, TContext> => {
 
@@ -1174,12 +1332,12 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
     export type CreateBuilderJobMutationResult = NonNullable<Awaited<ReturnType<typeof createBuilderJob>>>
     export type CreateBuilderJobMutationBody = BodyType<BuilderInput>
-    export type CreateBuilderJobMutationError = ErrorType<unknown>
+    export type CreateBuilderJobMutationError = ErrorType<UnauthorizedResponse | QuotaExceededResponse>
 
     /**
  * @summary Install a dependency or assemble an app
  */
-export const useCreateBuilderJob = <TError = ErrorType<unknown>,
+export const useCreateBuilderJob = <TError = ErrorType<UnauthorizedResponse | QuotaExceededResponse>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createBuilderJob>>, TError,{data: BodyType<BuilderInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof createBuilderJob>>,
@@ -1216,7 +1374,7 @@ export const retryBuilderJob = async (id: string, options?: Parameters<typeof cu
 
 
 
-export const getRetryBuilderJobMutationOptions = <TError = ErrorType<unknown>,
+export const getRetryBuilderJobMutationOptions = <TError = ErrorType<UnauthorizedResponse | void>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof retryBuilderJob>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof retryBuilderJob>>, TError,{id: string}, TContext> => {
 
@@ -1245,12 +1403,12 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
     export type RetryBuilderJobMutationResult = NonNullable<Awaited<ReturnType<typeof retryBuilderJob>>>
 
-    export type RetryBuilderJobMutationError = ErrorType<unknown>
+    export type RetryBuilderJobMutationError = ErrorType<UnauthorizedResponse | void>
 
     /**
  * @summary Retry a failed builder job
  */
-export const useRetryBuilderJob = <TError = ErrorType<unknown>,
+export const useRetryBuilderJob = <TError = ErrorType<UnauthorizedResponse | void>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof retryBuilderJob>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof retryBuilderJob>>,
