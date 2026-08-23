@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useRef, useState } from 'react';
+import { type CSSProperties, type ReactNode, useEffect, useRef, useState } from 'react';
 import { ClerkProvider, SignIn, SignUp, useAuth, useClerk } from '@clerk/react';
 import { publishableKeyFromHost } from '@clerk/react/internal';
 import { dark } from '@clerk/themes';
@@ -21,6 +21,7 @@ import ContentPage from "@/pages/content";
 import BuilderPage from "@/pages/builder";
 import SettingsPage from "@/pages/settings";
 import LandingPage from "@/pages/landing";
+import "@/styles/auth-core.css";
 
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, '');
 const clerkPubKey = publishableKeyFromHost(
@@ -97,65 +98,49 @@ function stripBase(path: string): string {
 
 function AuthLayout({ children }: { children: ReactNode }) {
   const [showRequiredFieldsNotice, setShowRequiredFieldsNotice] = useState(false);
+  const [pointer, setPointer] = useState({ x: 50, y: 50 });
+  const [coreEngaged, setCoreEngaged] = useState(false);
 
   return (
     <div
-      className="relative flex min-h-[100dvh] w-full items-center justify-center overflow-x-hidden overflow-y-auto bg-black px-0 py-10 font-sans selection:bg-emerald-500/30 selection:text-emerald-200 sm:py-8"
+      className="access-core"
+      style={{ "--pointer-x": `${pointer.x}%`, "--pointer-y": `${pointer.y}%` } as CSSProperties}
+      onPointerMove={(event) => {
+        const rect = event.currentTarget.getBoundingClientRect();
+        setPointer({ x: ((event.clientX - rect.left) / rect.width) * 100, y: ((event.clientY - rect.top) / rect.height) * 100 });
+      }}
       onInvalidCapture={() => setShowRequiredFieldsNotice(true)}
       onInputCapture={() => setShowRequiredFieldsNotice(false)}
     >
-      <div
-        className="absolute inset-0 bg-cover bg-center bg-no-repeat transition-all duration-1000"
-        style={{
-          backgroundImage: `url(${basePath || ''}/agentic-intelligence-grotto.jpg)`,
-          filter: 'saturate(0.72) contrast(1.16) brightness(0.46)'
-        }}
-      />
-
-      <div className="auth-overlay-grid" />
-      <div className="auth-vignette" />
-
-      <div className="auth-scene">
-        <div className="auth-particles" />
-        <div className="auth-core" />
-        <div className="auth-cube-wrapper">
-          <div className="auth-cube-face front" />
-          <div className="auth-cube-face back" />
-          <div className="auth-cube-face right" />
-          <div className="auth-cube-face left" />
-          <div className="auth-cube-face top" />
-          <div className="auth-cube-face bottom" />
-        </div>
-      </div>
-
-      <div className="auth-scanline" />
-
-      <div className="auth-content relative z-10 w-full max-w-md px-4 sm:px-0">
-        {showRequiredFieldsNotice && (
-          <div
-            aria-live="assertive"
-            className="mb-3 border border-amber-400/50 bg-amber-400/10 px-4 py-3 font-mono text-[11px] uppercase tracking-[0.08em] text-amber-100 shadow-[0_0_24px_rgba(251,191,36,0.12)]"
-            role="alert"
-          >
-            Заполните обязательные поля, затем нажмите «Продолжить».
+      <div className="access-core__backdrop" aria-hidden="true" />
+      <div className="access-core__noise" aria-hidden="true" />
+      <header className="access-header">
+        <div className="brand-lockup"><span className="brand-mark" aria-hidden="true"><i /><i /><i /></span><span><b>AGENT</b><em>multitool 360</em></span></div>
+        <div className="secure-chip"><span /> private operator access</div>
+      </header>
+      <section className="access-layout" aria-label="Secure workspace access">
+        <div className="access-intro">
+          <p className="eyebrow"><span className="eyebrow-line" /> CORE / 01</p><h1>Open the<br /><strong>workspace.</strong></h1>
+          <p className="intro-copy">One operator. A coordinated fleet. Your next move travels through a room that is already listening.</p>
+          <div className="fleet-list" aria-label="Agent fleet readiness">
+            {["Analyst", "Builder", "Seller", "Orchestrator"].map((agent, index) => <div className="fleet-agent" key={agent}><span className={`agent-node agent-${index}`}>{agent.slice(0, 2).toUpperCase()}</span><span>{agent}</span><i className="agent-ready" aria-label={`${agent} ready`} /></div>)}
           </div>
-        )}
-        <div className="animate-in fade-in zoom-in-95 duration-1000 delay-300 fill-mode-both">
-          {children}
         </div>
-      </div>
-
-      <div className="absolute bottom-6 left-6 z-10 font-mono text-[10px] text-emerald-500/40 uppercase tracking-[0.2em] pointer-events-none hidden sm:block">
-        <div className="flex flex-col gap-1.5">
-          <div className="flex items-center gap-2">
-            <span className="auth-status-indicator h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500" />
-            СИСТЕМА В СЕТИ
+        <div className="core-stage" aria-label={coreEngaged ? "Pointer linked to access core" : "Access core ready"}>
+          <div className="orbit orbit--one" /><div className="orbit orbit--two" /><div className="core-ripple ripple--one" /><div className="core-ripple ripple--two" />
+          <div className="core-orb" role="button" tabIndex={0} aria-label="Preview secure access core" onPointerEnter={() => setCoreEngaged(true)} onPointerLeave={() => setCoreEngaged(false)} onFocus={() => setCoreEngaged(true)} onBlur={() => setCoreEngaged(false)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setCoreEngaged(value => !value); } }}>
+            <div className="facet facet--a" /><div className="facet facet--b" /><div className="facet facet--c" /><div className="facet facet--d" /><div className="facet facet--e" /><div className="facet facet--f" /><div className="core-aperture"><span>360</span></div>
           </div>
-          <div>ЯДРО: ЗАЩИЩЕНО</div>
-          <div>ВЕРСИЯ: 3.6.0.44</div>
-          <div className="mt-2 text-emerald-500/20">АГЕНТ-МУЛЬТИТУЛ 360</div>
+          <div className="core-status-chip" aria-live="polite">{coreEngaged ? "POINTER LINKED" : "CORE READY"}</div>
+          <div className="stage-caption"><span className="signal-pulse" /> {coreEngaged ? "Previewing a private workspace link" : "Workspace link is ready"}</div>
         </div>
-      </div>
+        <div className="access-panel">
+          <div className="panel-topline"><span>OPERATOR GATE</span><span>01 / 02</span></div><h2>Sign in to<br /><span>continue.</span></h2><p className="panel-copy">Your credentials unlock the command layer. Nothing moves until you say so.</p>
+          {showRequiredFieldsNotice && <div aria-live="assertive" className="auth-required-notice" role="alert">Заполните обязательные поля, затем нажмите «Продолжить».</div>}
+          <div className="auth-clerk-panel">{children}</div>
+        </div>
+      </section>
+      <footer className="access-footer"><span>AM360 / SECURE ACCESS CORE</span><span>LINK LATENCY <b>18ms</b></span><span>BUILD 3.6.0</span></footer>
     </div>
   );
 }
@@ -183,11 +168,21 @@ function WorkspaceRouter() {
   }
   if (!isSignedIn) return <LandingPage />;
 
+  return <Switch>
+    <Route path="/" component={DashboardWorkspace} />
+    <Route component={LegacyWorkspace} />
+  </Switch>;
+}
+
+function DashboardWorkspace() {
+  return <RoutedErrorBoundary><DashboardPage /></RoutedErrorBoundary>;
+}
+
+function LegacyWorkspace() {
   return (
     <Layout>
       <RoutedErrorBoundary>
         <Switch>
-          <Route path="/" component={DashboardPage} />
           <Route path="/analytics" component={AnalyticsPage} />
           <Route path="/content" component={ContentPage} />
           <Route path="/builder" component={BuilderPage} />
