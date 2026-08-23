@@ -9,6 +9,7 @@ import {
 import type { ErrorResponse, QuotaExceededResponse } from "@workspace/api-zod";
 import { pool } from "@workspace/db";
 import productionApp, { createTestApp } from "./app";
+import { initializeAgent360Schema } from "./lib/agent360-schema-init";
 
 const testUserPrefix = `security-test-${Date.now()}-`;
 const userIds = new Set<string>();
@@ -97,6 +98,27 @@ after(async () => {
 });
 
 describe("agent 360 authentication and quota regression", () => {
+  test("initializes publishing schema without a Stripe domain", async () => {
+    const originalDomain = process.env.REPLIT_DOMAINS;
+    delete process.env.REPLIT_DOMAINS;
+    try {
+      assert.equal(await initializeAgent360Schema(), true);
+      const result = await pool.query<{
+        connections: string | null;
+        deliveries: string | null;
+      }>(`
+        SELECT
+          to_regclass('public.agent360_channel_connections')::text AS connections,
+          to_regclass('public.agent360_publish_deliveries')::text AS deliveries
+      `);
+      assert.equal(result.rows[0]?.connections, "agent360_channel_connections");
+      assert.equal(result.rows[0]?.deliveries, "agent360_publish_deliveries");
+    } finally {
+      if (originalDomain === undefined) delete process.env.REPLIT_DOMAINS;
+      else process.env.REPLIT_DOMAINS = originalDomain;
+    }
+  });
+
   test("keeps the production Clerk path authoritative", async () => {
     const response = await fetch(`${productionBaseUrl}/api/account`, {
       headers: { "x-test-user-id": "attempted-auth-bypass" },
@@ -176,6 +198,68 @@ describe("agent 360 authentication and quota regression", () => {
     const afterSignOut = await request("/api/account", undefined);
     assert.equal(afterSignOut.status, 401);
     assertErrorResponse(await json(afterSignOut));
+  });
+
+  test("publishes a confirmed Telegram draft without returning its credential", async () => {
+    const originalFetch = globalThis.fetch;
+    const telegramCredential = "test-telegram-credential";
+    globalThis.fetch = async (input, init) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (!url.startsWith("https://api.telegram.org/")) {
+        return originalFetch(input, init);
+      }
+      if (url.includes("/getMe")) {
+        return Response.json({ ok: true, result: { id: 901 } });
+      }
+      if (url.includes("/getChat?")) {
+        return Response.json({ ok: true, result: { id: -100555 } });
+      }
+      if (url.includes("/getChatMember?")) {
+        return Response.json({ ok: true, result: { status: "administrator", can_post_messages: true } });
+      }
+      if (url.includes("/sendMessage")) {
+        return Response.json({ ok: true, result: { message_id: 77 } });
+      }
+      return Response.json({ ok: false }, { status: 404 });
+    };
+
+    try {
+      const userId = registerUser();
+      const connection = await request("/api/connections", userId, {
+        method: "POST",
+        body: JSON.stringify({
+          provider: "telegram",
+          target: "@workspace_test",
+          credential: telegramCredential,
+        }),
+      });
+      assert.equal(connection.status, 201);
+      const connectionBody = await json(connection);
+      assert.doesNotMatch(JSON.stringify(connectionBody), new RegExp(telegramCredential));
+
+      const draftResponse = await request("/api/content", userId, {
+        method: "POST",
+        body: JSON.stringify({ topic: "Verified delivery", channels: ["telegram"] }),
+      });
+      assert.equal(draftResponse.status, 201);
+      const draft = GenerateContentResponse.parse(await json(draftResponse));
+
+      const publishResponse = await request(`/api/content/${draft.id}/publish`, userId, {
+        method: "POST",
+        body: JSON.stringify({ channels: ["telegram"], confirmed: true }),
+      });
+      assert.equal(publishResponse.status, 200);
+      const published = await json(publishResponse) as {
+        status?: string;
+        deliveries?: Array<{ status?: string; externalId?: string | null }>;
+      };
+      assert.equal(published.status, "published");
+      assert.equal(published.deliveries?.[0]?.status, "published");
+      assert.equal(published.deliveries?.[0]?.externalId, "77");
+      assert.doesNotMatch(JSON.stringify(published), new RegExp(telegramCredential));
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 
   test("atomically enforces the monthly content limit under parallel requests", async () => {
