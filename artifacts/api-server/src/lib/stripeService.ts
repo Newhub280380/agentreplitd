@@ -90,19 +90,18 @@ export async function getOrCreatePrice(planId: PaidPlanId, stripeClient?: Stripe
       type: "recurring",
       limit: 100,
     });
-    const matchingPrices = prices.data
-      .filter(
-        (price) =>
-          price.currency === "usd" &&
-          price.unit_amount === definition.amount &&
-          price.recurring?.interval === "month",
-      )
+    const activeMonthlyUsdPrices = prices.data
+      .filter((price) => price.currency === "usd" && price.recurring?.interval === "month")
       .sort((left, right) => (left.created - right.created) || left.id.localeCompare(right.id));
+    const matchingPrices = activeMonthlyUsdPrices.filter(
+      (price) => price.unit_amount === definition.amount,
+    );
     const existing = matchingPrices[0];
     if (existing) {
-      if (matchingPrices.length > 1) {
+      const duplicates = activeMonthlyUsdPrices.filter((price) => price.id !== existing.id);
+      if (duplicates.length > 0) {
         await Promise.all(
-          matchingPrices.slice(1).map((duplicate) => stripe.prices.update(duplicate.id, { active: false })),
+          duplicates.map((duplicate) => stripe.prices.update(duplicate.id, { active: false })),
         );
       }
       return existing.id;
@@ -118,6 +117,11 @@ export async function getOrCreatePrice(planId: PaidPlanId, stripeClient?: Stripe
       },
       { idempotencyKey: `agent360-price-${planId}-usd-monthly-v1` },
     );
+    if (activeMonthlyUsdPrices.length > 0) {
+      await Promise.all(
+        activeMonthlyUsdPrices.map((duplicate) => stripe.prices.update(duplicate.id, { active: false })),
+      );
+    }
     return price.id;
   });
 }
