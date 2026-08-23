@@ -51,10 +51,12 @@ import {
 
 const router: IRouter = Router();
 const builderLogPath = path.resolve(process.cwd(), "agent360-builder.log");
-type AuthenticatedRequest = Request & { userId: string };
+export type AuthResolver = (req: Request) => string | null | undefined;
+type AuthenticatedRequest = Request & { userId: string; authResolver?: AuthResolver };
 
 function requireAuth(req: Request, res: Response, next: NextFunction): void {
-  const userId = getAuth(req).userId;
+  const authResolver = (req as AuthenticatedRequest).authResolver;
+  const userId = authResolver ? authResolver(req) : getAuth(req).userId;
   if (!userId) {
     res.status(401).json({ error: "Sign in is required to access a workspace." });
     return;
