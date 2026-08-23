@@ -5,6 +5,15 @@ import { ErrorBoundary } from '@/components/error-boundary';
 
 import './index.css';
 
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    const basePath = import.meta.env.BASE_URL;
+    navigator.serviceWorker.register(`${basePath}sw.js`, { scope: basePath }).catch(() => {
+      // Installability enhancement must never block application startup.
+    });
+  });
+}
+
 createRoot(document.getElementById('root')!, {
   // Keeps caught errors off reportError(), which would raise the dev overlay.
   onCaughtError: (error, errorInfo) => {

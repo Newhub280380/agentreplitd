@@ -1,0 +1,15 @@
+{
+  "name": "Агент-мультитул 360",
+  "short_name": "Агент 360",
+  "description": "Защищённое рабочее пространство для координации агентного флота, аналитики и операций.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#08100e",
+  "theme_color": "#08100e",
+  "icons": [
+    { "src": "./agent-360-icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "./agent-360-icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "./agent-360-icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
