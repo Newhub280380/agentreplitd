@@ -6,6 +6,18 @@ type StripeCredentials = {
   webhookSecret?: string;
 };
 
+function retryDelay(response: Response, attempt: number): number {
+  const retryAfterSeconds = Number(response.headers.get("retry-after"));
+  if (Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0) {
+    return Math.min(retryAfterSeconds * 1_000, 5_000);
+  }
+  return 250 * 2 ** attempt;
+}
+
+async function wait(milliseconds: number): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
 /**
  * Reads the current Stripe connection on demand. The connection can rotate
  * credentials, so callers must never cache this result or the Stripe client.
@@ -22,16 +34,21 @@ export async function getStripeCredentials(): Promise<StripeCredentials> {
     throw new Error("Stripe connection is unavailable in this environment.");
   }
 
-  const response = await fetch(
-    `https://${hostname}/api/v2/connection?include_secrets=true&connector_names=stripe`,
-    {
-      headers: { Accept: "application/json", X_REPLIT_TOKEN: token },
-      signal: AbortSignal.timeout(10_000),
-    },
-  );
+  let response: Response | undefined;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    response = await fetch(
+      `https://${hostname}/api/v2/connection?include_secrets=true&connector_names=stripe`,
+      {
+        headers: { Accept: "application/json", X_REPLIT_TOKEN: token },
+        signal: AbortSignal.timeout(10_000),
+      },
+    );
+    if (response.status !== 429 || attempt === 2) break;
+    await wait(retryDelay(response, attempt));
+  }
 
-  if (!response.ok) {
-    throw new Error(`Unable to read Stripe connection (${response.status}).`);
+  if (!response?.ok) {
+    throw new Error(`Unable to read Stripe connection (${response?.status ?? "unknown"}).`);
   }
 
   const data = (await response.json()) as {
