@@ -119,6 +119,186 @@ describe("agent 360 authentication and quota regression", () => {
     }
   });
 
+  test("migration keeps the newest active connection and revokes older credentials", async () => {
+    const userId = registerUser();
+    const account = await request("/api/account", userId);
+    const overview = GetAccountOverviewResponse.parse(await json(account));
+    const olderId = `legacy-older-${Date.now()}`;
+    const newerId = `legacy-newer-${Date.now()}`;
+    const olderCredential = "legacy-older-encrypted-credential";
+    const newerCredential = "legacy-newer-encrypted-credential";
+    const olderCreatedAt = new Date("2026-01-01T00:00:00.000Z");
+    const newerCreatedAt = new Date("2026-01-02T00:00:00.000Z");
+
+    await pool.query("DROP INDEX IF EXISTS agent360_channel_connections_workspace_provider_unique");
+    await pool.query(
+      `INSERT INTO agent360_channel_connections
+        (id, workspace_id, provider, target, credential_ciphertext, is_active, status, created_at)
+       VALUES
+        ($1, $3, 'telegram', '@legacy_old', $4, true, 'connected', $5),
+        ($2, $3, 'telegram', '@legacy_new', $6, true, 'connected', $7)`,
+      [olderId, newerId, overview.workspace.id, olderCredential, olderCreatedAt, newerCredential, newerCreatedAt],
+    );
+
+    await initializeAgent360Schema();
+
+    const connections = await pool.query<{
+      id: string;
+      target: string;
+      credential_ciphertext: string | null;
+      is_active: boolean;
+      status: string;
+      last_error: string | null;
+    }>(
+      `SELECT id, target, credential_ciphertext, is_active, status, last_error
+       FROM agent360_channel_connections
+       WHERE workspace_id = $1 AND provider = 'telegram'
+       ORDER BY created_at`,
+      [overview.workspace.id],
+    );
+    assert.equal(connections.rows.length, 2);
+    assert.deepEqual(connections.rows[0], {
+      id: olderId,
+      target: "@legacy_old",
+      credential_ciphertext: null,
+      is_active: false,
+      status: "needs_setup",
+      last_error: "Заменено более новым подключением канала.",
+    });
+    assert.deepEqual(connections.rows[1], {
+      id: newerId,
+      target: "@legacy_new",
+      credential_ciphertext: newerCredential,
+      is_active: true,
+      status: "connected",
+      last_error: null,
+    });
+  });
+
+  test("parallel connects leave one active canonical provider target per workspace", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async (input, init) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (!url.startsWith("https://api.telegram.org/")) {
+        return originalFetch(input, init);
+      }
+      if (url.includes("/getMe")) {
+        return Response.json({ ok: true, result: { id: 901 } });
+      }
+      if (url.includes("/getChat?")) {
+        return Response.json({ ok: true, result: { id: -100777 } });
+      }
+      if (url.includes("/getChatMember?")) {
+        return Response.json({ ok: true, result: { status: "administrator", can_post_messages: true } });
+      }
+      return Response.json({ ok: false }, { status: 404 });
+    };
+
+    try {
+      const userId = registerUser();
+      const responses = await Promise.all(
+        Array.from({ length: 12 }, (_, index) =>
+          request("/api/connections", userId, {
+            method: "POST",
+            body: JSON.stringify({
+              provider: "telegram",
+              target: `@parallel_${index}`,
+              credential: `parallel-telegram-credential-${index}`,
+            }),
+          }),
+        ),
+      );
+      assert.deepEqual(
+        responses.map((response) => response.status).sort((left, right) => left - right),
+        Array.from({ length: 12 }, () => 201),
+      );
+      for (const [index, response] of responses.entries()) {
+        const body = await json(response);
+        assert.doesNotMatch(JSON.stringify(body), new RegExp(`parallel-telegram-credential-${index}`));
+      }
+
+      const account = await request("/api/account", userId);
+      const overview = GetAccountOverviewResponse.parse(await json(account));
+      const activeConnections = await pool.query<{ count: string; target: string | null }>(
+        `SELECT count(*)::text AS count, max(target) AS target
+         FROM agent360_channel_connections
+         WHERE workspace_id = $1 AND provider = 'telegram' AND is_active = true
+         GROUP BY provider`,
+        [overview.workspace.id],
+      );
+      assert.equal(activeConnections.rows.length, 1);
+      assert.equal(activeConnections.rows[0]?.count, "1");
+      assert.equal(activeConnections.rows[0]?.target, "-100777");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  test("rejects cross-workspace channel checks and disconnects without changing the owner", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async (input, init) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (!url.startsWith("https://api.telegram.org/")) {
+        return originalFetch(input, init);
+      }
+      if (url.includes("/getMe")) {
+        return Response.json({ ok: true, result: { id: 901 } });
+      }
+      if (url.includes("/getChat?")) {
+        return Response.json({ ok: true, result: { id: -100888 } });
+      }
+      if (url.includes("/getChatMember?")) {
+        return Response.json({ ok: true, result: { status: "administrator", can_post_messages: true } });
+      }
+      return Response.json({ ok: false }, { status: 404 });
+    };
+
+    try {
+      const owner = registerUser();
+      const otherUser = registerUser();
+      const ownerConnection = await request("/api/connections", owner, {
+        method: "POST",
+        body: JSON.stringify({
+          provider: "telegram",
+          target: "@owner_channel",
+          credential: "cross-workspace-credential",
+        }),
+      });
+      assert.equal(ownerConnection.status, 201);
+      const ownerConnectionBody = await json(ownerConnection) as { id: string; target: string; status: string };
+      assert.doesNotMatch(JSON.stringify(ownerConnectionBody), /cross-workspace-credential/);
+
+      const crossWorkspaceCheck = await request(`/api/connections/${ownerConnectionBody.id}/check`, otherUser, {
+        method: "POST",
+      });
+      assert.equal(crossWorkspaceCheck.status, 404);
+      assertErrorResponse(await json(crossWorkspaceCheck));
+
+      const crossWorkspaceDisconnect = await request(`/api/connections/${ownerConnectionBody.id}`, otherUser, {
+        method: "DELETE",
+      });
+      assert.equal(crossWorkspaceDisconnect.status, 404);
+      assertErrorResponse(await json(crossWorkspaceDisconnect));
+
+      const ownerConnections = await request("/api/connections", owner);
+      assert.equal(ownerConnections.status, 200);
+      const ownerConnectionsBody = await json(ownerConnections);
+      assert.doesNotMatch(JSON.stringify(ownerConnectionsBody), /cross-workspace-credential/);
+      assert.equal(
+        (ownerConnectionsBody as Array<{ channel?: string; id?: string; status?: string; target?: string }>)
+          .find((connection) => connection.id === ownerConnectionBody.id)?.status,
+        "connected",
+      );
+      assert.equal(
+        (ownerConnectionsBody as Array<{ channel?: string; id?: string; status?: string; target?: string }>)
+          .find((connection) => connection.id === ownerConnectionBody.id)?.target,
+        "-100888",
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   test("keeps the production Clerk path authoritative", async () => {
     const response = await fetch(`${productionBaseUrl}/api/account`, {
       headers: { "x-test-user-id": "attempted-auth-bypass" },
@@ -244,6 +424,20 @@ describe("agent 360 authentication and quota regression", () => {
       assert.equal(draftResponse.status, 201);
       const draft = GenerateContentResponse.parse(await json(draftResponse));
 
+      const duplicateChannelPublish = await request(`/api/content/${draft.id}/publish`, userId, {
+        method: "POST",
+        body: JSON.stringify({ channels: ["telegram", "telegram"], confirmed: true }),
+      });
+      assert.equal(duplicateChannelPublish.status, 400);
+      assertErrorResponse(await json(duplicateChannelPublish));
+
+      const targetOutsideDraftPublish = await request(`/api/content/${draft.id}/publish`, userId, {
+        method: "POST",
+        body: JSON.stringify({ channels: ["vk"], confirmed: true }),
+      });
+      assert.equal(targetOutsideDraftPublish.status, 400);
+      assertErrorResponse(await json(targetOutsideDraftPublish));
+
       const publishResponse = await request(`/api/content/${draft.id}/publish`, userId, {
         method: "POST",
         body: JSON.stringify({ channels: ["telegram"], confirmed: true }),
@@ -257,6 +451,17 @@ describe("agent 360 authentication and quota regression", () => {
       assert.equal(published.deliveries?.[0]?.status, "published");
       assert.equal(published.deliveries?.[0]?.externalId, "77");
       assert.doesNotMatch(JSON.stringify(published), new RegExp(telegramCredential));
+
+      const account = await request("/api/account", userId);
+      const overview = GetAccountOverviewResponse.parse(await json(account));
+      const journal = await pool.query<{ detail: string }>(
+        `SELECT detail
+         FROM agent360_activities
+         WHERE workspace_id = $1
+           AND (title ILIKE '%канал%' OR title ILIKE '%публикац%')`,
+        [overview.workspace.id],
+      );
+      assert.doesNotMatch(JSON.stringify(journal.rows), new RegExp(telegramCredential));
     } finally {
       globalThis.fetch = originalFetch;
     }
