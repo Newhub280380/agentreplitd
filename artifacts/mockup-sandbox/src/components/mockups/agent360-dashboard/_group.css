@@ -1,0 +1,77 @@
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Inter:wght@400;500;600&display=swap');
+
+.agent360-dashboard {
+  --a-primary: hsl(16 100% 50%);
+  --a-border: hsl(240 5.9% 85%);
+  --a-muted: hsl(240 3.8% 46.1%);
+  min-height: 100vh;
+  color: hsl(240 10% 3.9%);
+  background: hsl(240 5% 96%);
+  font-family: Inter, sans-serif;
+}
+
+.agent360-dashboard * { box-sizing: border-box; }
+.agent360-dashboard button, .agent360-dashboard input { font: inherit; }
+.agent360-dashboard .a-display { font-family: "Space Grotesk", sans-serif; }
+.agent360-dashboard .a-mono { font-family: "JetBrains Mono", monospace; }
+.agent360-dashboard .a-shell { display: flex; min-height: 100vh; }
+.agent360-dashboard .a-sidebar { width: 256px; flex: 0 0 256px; background: #09090b; color: #a1a1aa; border-right: 1px solid #27272a; display: flex; flex-direction: column; }
+.agent360-dashboard .a-brand { height: 56px; display: flex; align-items: center; padding: 0 16px; border-bottom: 1px solid #27272a; color: white; font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: .1em; gap: 8px; }
+.agent360-dashboard .a-brand svg { color: var(--a-primary); width: 16px; }
+.agent360-dashboard .a-nav { padding: 16px 0; display: flex; flex: 1; flex-direction: column; gap: 4px; }
+.agent360-dashboard .a-nav-bottom { border-top: 1px solid #27272a; padding: 16px 0; }
+.agent360-dashboard .a-nav-item { height: 44px; padding: 0 16px; border-left: 4px solid transparent; display: flex; align-items: center; gap: 12px; color: #a1a1aa; font-size: 14px; font-weight: 500; text-decoration: none; text-transform: uppercase; letter-spacing: .05em; }
+.agent360-dashboard .a-nav-item svg { width: 16px; height: 16px; }
+.agent360-dashboard .a-nav-item.active { border-left-color: var(--a-primary); background: #18181b; color: white; }
+.agent360-dashboard .a-main { min-width: 0; flex: 1; display: flex; flex-direction: column; }
+.agent360-dashboard .a-header { min-height: 56px; background: white; border-bottom: 1px solid var(--a-border); padding: 0 24px; display: flex; align-items: center; justify-content: space-between; }
+.agent360-dashboard .a-header-title { font-size: 14px; color: #27272a; font-weight: 700; text-transform: uppercase; letter-spacing: .1em; }
+.agent360-dashboard .a-header-right { display: flex; align-items: center; gap: 16px; }
+.agent360-dashboard .a-sys-label { font-size: 12px; color: #71717a; text-transform: uppercase; }
+.agent360-dashboard .a-system { display: flex; gap: 6px; align-items: center; color: #059669; font-size: 12px; font-weight: 700; text-transform: uppercase; }
+.agent360-dashboard .a-dot { width: 8px; height: 8px; background: #10b981; border-radius: 50%; }
+.agent360-dashboard .a-user { border-left: 1px solid var(--a-border); padding-left: 16px; display: flex; gap: 8px; align-items: center; }
+.agent360-dashboard .a-avatar { width: 28px; height: 28px; display: grid; place-items: center; border-radius: 50%; background: #09090b; color: var(--a-primary); font-size: 12px; font-weight: 700; }
+.agent360-dashboard .a-user-name { color: #27272a; font-size: 12px; font-weight: 700; text-transform: uppercase; }
+.agent360-dashboard .a-signout { border: 0; padding: 0; background: transparent; color: #71717a; cursor: pointer; font-size: 10px; letter-spacing: .08em; text-transform: uppercase; }
+.agent360-dashboard .a-content { flex: 1; overflow: auto; padding: 24px; background: rgba(244,244,245,.5); }
+.agent360-dashboard .a-content-inner { max-width: 1280px; margin: 0 auto; }
+.agent360-dashboard .a-command { overflow: hidden; background: #09090b; color: white; border: 1px solid rgba(255,80,0,.2); box-shadow: 0 1px 2px rgba(0,0,0,.05); }
+.agent360-dashboard .a-command-label { height: 25px; padding: 0 16px; background: var(--a-primary); display: flex; align-items: center; gap: 8px; color: white; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .1em; }
+.agent360-dashboard .a-command-label svg { width: 12px; height: 12px; }
+.agent360-dashboard .a-command-form { padding: 16px; display: flex; align-items: center; gap: 16px; }
+.agent360-dashboard .a-command-prompt { color: var(--a-primary); font-size: 18px; font-weight: bold; }
+.agent360-dashboard .a-command-input { min-width: 0; flex: 1; border: 0; outline: 0; color: white; background: transparent; font-size: 14px; }
+.agent360-dashboard .a-command-input::placeholder { color: #52525b; }
+.agent360-dashboard .a-button { border: 0; padding: 9px 16px; background: var(--a-primary); color: white; cursor: pointer; font-size: 13px; font-weight: 500; }
+.agent360-dashboard .a-metrics { display: grid; grid-template-columns: repeat(5, 1fr); gap: 16px; margin: 24px 0; }
+.agent360-dashboard .a-card { border: 1px solid var(--a-border); background: white; box-shadow: 0 1px 2px rgba(0,0,0,.03); }
+.agent360-dashboard .a-metric { padding: 16px; min-height: 94px; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+.agent360-dashboard .a-metric-label { color: var(--a-muted); font-size: 12px; text-transform: uppercase; letter-spacing: .1em; }
+.agent360-dashboard .a-metric-value { font-size: 24px; font-weight: 700; }
+.agent360-dashboard .a-columns { display: grid; grid-template-columns: minmax(230px, 1fr) minmax(0, 2fr); gap: 24px; }
+.agent360-dashboard .a-card-header { padding: 20px 24px; display: flex; justify-content: space-between; align-items: center; }
+.agent360-dashboard .a-card-title { margin: 0; font-family: "Space Grotesk", sans-serif; font-size: 18px; font-weight: 700; }
+.agent360-dashboard .a-agent { padding: 16px; border-top: 1px solid var(--a-border); display: flex; flex-direction: column; gap: 8px; }
+.agent360-dashboard .a-agent-top { display: flex; align-items: center; justify-content: space-between; }
+.agent360-dashboard .a-agent-name { font-family: "Space Grotesk", sans-serif; font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; }
+.agent360-dashboard .a-agent-role { color: var(--a-muted); font-size: 12px; }
+.agent360-dashboard .a-agent-metric { margin-top: 8px; padding: 8px; border: 1px solid var(--a-border); background: #fafafa; font-size: 12px; }
+.agent360-dashboard .a-badge { padding: 3px 8px; display: inline-flex; align-items: center; border-radius: 2px; font-size: 11px; font-weight: 600; line-height: 1; text-transform: capitalize; }
+.agent360-dashboard .a-success { color: #047857; background: #d1fae5; }
+.agent360-dashboard .a-running { color: #1d4ed8; background: #dbeafe; }
+.agent360-dashboard .a-outline { border: 1px solid var(--a-border); background: white; color: #52525b; }
+.agent360-dashboard .a-right { display: flex; flex-direction: column; gap: 24px; }
+.agent360-dashboard .a-refresh { border: 1px solid var(--a-border); padding: 6px 12px; background: white; color: #27272a; font-size: 12px; cursor: pointer; }
+.agent360-dashboard table { width: 100%; border-collapse: collapse; }
+.agent360-dashboard th { height: 40px; padding: 0 24px; color: var(--a-muted); text-align: left; font-size: 12px; font-weight: 500; }
+.agent360-dashboard td { padding: 12px 24px; border-top: 1px solid var(--a-border); font-size: 13px; }
+.agent360-dashboard .a-run-id, .agent360-dashboard .a-date { color: var(--a-muted); font-size: 12px; }
+.agent360-dashboard .a-kind { font-size: 12px; font-weight: 700; text-transform: uppercase; }
+.agent360-dashboard .a-log-icon { width: 16px; height: 16px; }
+.agent360-dashboard .a-log-icon.ok { color: #10b981; } .agent360-dashboard .a-log-icon.warn { color: #f59e0b; } .agent360-dashboard .a-log-icon.play { color: #3b82f6; }
+.agent360-dashboard .a-log-time { padding-left: 0; padding-right: 12px; white-space: nowrap; color: var(--a-muted); font-size: 12px; }
+.agent360-dashboard .a-log-agent { width: 130px; font-size: 12px; font-weight: 700; text-transform: uppercase; }
+.agent360-dashboard .a-log-title { font-size: 14px; font-weight: 500; }
+.agent360-dashboard .a-log-detail { margin-top: 2px; color: var(--a-muted); font-size: 12px; }
+@media (max-width: 800px) { .agent360-dashboard .a-sidebar { width: 56px; flex-basis: 56px; } .agent360-dashboard .a-brand { font-size: 0; }.agent360-dashboard .a-nav-item { font-size: 0; padding: 0 16px; }.agent360-dashboard .a-metrics { grid-template-columns: repeat(2, 1fr); }.agent360-dashboard .a-columns { grid-template-columns: 1fr; }.agent360-dashboard .a-user, .agent360-dashboard .a-sys-label { display: none; } }
