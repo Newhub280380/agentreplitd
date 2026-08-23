@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useRef } from 'react';
+import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { ClerkProvider, SignIn, SignUp, useAuth, useClerk } from '@clerk/react';
 import { publishableKeyFromHost } from '@clerk/react/internal';
 import { dark } from '@clerk/themes';
@@ -96,8 +96,14 @@ function stripBase(path: string): string {
 }
 
 function AuthLayout({ children }: { children: ReactNode }) {
+  const [showRequiredFieldsNotice, setShowRequiredFieldsNotice] = useState(false);
+
   return (
-    <div className="relative flex min-h-[100dvh] w-full items-center justify-center overflow-x-hidden overflow-y-auto bg-black px-0 py-10 font-sans selection:bg-emerald-500/30 selection:text-emerald-200 sm:py-8">
+    <div
+      className="relative flex min-h-[100dvh] w-full items-center justify-center overflow-x-hidden overflow-y-auto bg-black px-0 py-10 font-sans selection:bg-emerald-500/30 selection:text-emerald-200 sm:py-8"
+      onInvalidCapture={() => setShowRequiredFieldsNotice(true)}
+      onInputCapture={() => setShowRequiredFieldsNotice(false)}
+    >
       <div
         className="absolute inset-0 bg-cover bg-center bg-no-repeat transition-all duration-1000"
         style={{
@@ -125,6 +131,15 @@ function AuthLayout({ children }: { children: ReactNode }) {
       <div className="auth-scanline" />
 
       <div className="auth-content relative z-10 w-full max-w-md px-4 sm:px-0">
+        {showRequiredFieldsNotice && (
+          <div
+            aria-live="assertive"
+            className="mb-3 border border-amber-400/50 bg-amber-400/10 px-4 py-3 font-mono text-[11px] uppercase tracking-[0.08em] text-amber-100 shadow-[0_0_24px_rgba(251,191,36,0.12)]"
+            role="alert"
+          >
+            Заполните обязательные поля, затем нажмите «Продолжить».
+          </div>
+        )}
         <div className="animate-in fade-in zoom-in-95 duration-1000 delay-300 fill-mode-both">
           {children}
         </div>
