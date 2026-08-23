@@ -1,6 +1,6 @@
 import app from "./app";
 import { logger } from "./lib/logger";
-import { runAgent360BillingMigration } from "./lib/agent360-billing-migration";
+import { initializeAgent360Schema } from "./lib/agent360-schema-init";
 import { getStripeSync } from "./lib/stripeClient";
 import { runMigrations } from "stripe-replit-sync";
 
@@ -26,12 +26,18 @@ async function initializeStripe(): Promise<void> {
     return;
   }
 
-  await runAgent360BillingMigration();
   await runMigrations({ databaseUrl });
   const sync = await getStripeSync();
   await sync.findOrCreateManagedWebhook(`https://${publicDomain}/api/stripe/webhook`);
   await sync.syncBackfill();
   logger.info("Stripe schema, webhook, and backfill are ready");
+}
+
+try {
+  await initializeAgent360Schema();
+} catch (err) {
+  logger.error({ err }, "Agent 360 schema initialization failed; server will not start");
+  throw err;
 }
 
 try {

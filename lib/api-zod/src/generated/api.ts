@@ -149,16 +149,80 @@ export const GetAgentsResponse = zod.array(GetAgentsResponseItem)
 
 
 /**
- * @summary List configured external service adapters
+ * @summary List workspace-scoped external adapters and publishing channels
  */
 export const GetConnectionsResponseItem = zod.object({
   "id": zod.string(),
   "provider": zod.string(),
   "category": zod.enum(['source', 'channel', 'payment', 'memory', 'ai']),
   "status": zod.enum(['connected', 'configured', 'needs_setup', 'unavailable']),
-  "detail": zod.string()
+  "detail": zod.string(),
+  "channel": zod.enum(['telegram', 'vk', 'instagram']).optional(),
+  "target": zod.string().nullish(),
+  "lastCheckedAt": zod.coerce.date().nullish(),
+  "canDisconnect": zod.boolean().optional()
 })
 export const GetConnectionsResponse = zod.array(GetConnectionsResponseItem)
+
+
+/**
+ * @summary Connect a permitted publishing channel to the signed-in workspace
+ */
+export const connectChannelBodyTargetMax = 200;
+
+export const connectChannelBodyCredentialMin = 8;
+
+
+
+export const ConnectChannelBody = zod.object({
+  "provider": zod.enum(['telegram', 'vk', 'instagram']),
+  "target": zod.string().min(1).max(connectChannelBodyTargetMax),
+  "credential": zod.string().min(connectChannelBodyCredentialMin).describe('Sent once over HTTPS, encrypted server-side, and never returned by the API.')
+})
+
+export const ConnectChannelResponse = zod.object({
+  "id": zod.string(),
+  "provider": zod.string(),
+  "category": zod.enum(['source', 'channel', 'payment', 'memory', 'ai']),
+  "status": zod.enum(['connected', 'configured', 'needs_setup', 'unavailable']),
+  "detail": zod.string(),
+  "channel": zod.enum(['telegram', 'vk', 'instagram']).optional(),
+  "target": zod.string().nullish(),
+  "lastCheckedAt": zod.coerce.date().nullish(),
+  "canDisconnect": zod.boolean().optional()
+})
+
+
+/**
+ * @summary Verify that a workspace-scoped channel credential can publish to its target
+ */
+export const CheckChannelConnectionParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const CheckChannelConnectionResponse = zod.object({
+  "id": zod.string(),
+  "provider": zod.string(),
+  "category": zod.enum(['source', 'channel', 'payment', 'memory', 'ai']),
+  "status": zod.enum(['connected', 'configured', 'needs_setup', 'unavailable']),
+  "detail": zod.string(),
+  "channel": zod.enum(['telegram', 'vk', 'instagram']).optional(),
+  "target": zod.string().nullish(),
+  "lastCheckedAt": zod.coerce.date().nullish(),
+  "canDisconnect": zod.boolean().optional()
+})
+
+
+/**
+ * @summary Disconnect a workspace publishing channel without exposing credentials
+ */
+export const DisconnectChannelParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const DisconnectChannelResponse = zod.object({
+  "success": zod.boolean()
+})
 
 
 /**
@@ -292,9 +356,16 @@ export const GetContentResponseItem = zod.object({
   "title": zod.string(),
   "body": zod.string(),
   "channels": zod.array(zod.string()),
-  "status": zod.enum(['draft', 'scheduled', 'published', 'failed']),
+  "status": zod.enum(['draft', 'scheduled', 'publishing', 'published', 'partial', 'failed']),
   "imageUrl": zod.string().nullish(),
-  "createdAt": zod.coerce.date()
+  "createdAt": zod.coerce.date(),
+  "deliveries": zod.array(zod.object({
+  "channel": zod.enum(['telegram', 'vk', 'instagram']),
+  "target": zod.string(),
+  "status": zod.enum(['published', 'failed']),
+  "detail": zod.string(),
+  "externalId": zod.string().nullable()
+})).optional()
 })
 export const GetContentResponse = zod.array(GetContentResponseItem)
 
@@ -317,9 +388,16 @@ export const GenerateContentResponse = zod.object({
   "title": zod.string(),
   "body": zod.string(),
   "channels": zod.array(zod.string()),
-  "status": zod.enum(['draft', 'scheduled', 'published', 'failed']),
+  "status": zod.enum(['draft', 'scheduled', 'publishing', 'published', 'partial', 'failed']),
   "imageUrl": zod.string().nullish(),
-  "createdAt": zod.coerce.date()
+  "createdAt": zod.coerce.date(),
+  "deliveries": zod.array(zod.object({
+  "channel": zod.enum(['telegram', 'vk', 'instagram']),
+  "target": zod.string(),
+  "status": zod.enum(['published', 'failed']),
+  "detail": zod.string(),
+  "externalId": zod.string().nullable()
+})).optional()
 })
 
 
@@ -330,8 +408,12 @@ export const PublishContentParams = zod.object({
   "id": zod.coerce.string()
 })
 
+
+
+
 export const PublishContentBody = zod.object({
-  "channels": zod.array(zod.enum(['telegram', 'vk', 'instagram']))
+  "channels": zod.array(zod.enum(['telegram', 'vk', 'instagram'])).min(1),
+  "confirmed": zod.boolean().describe('Must be true after the user has reviewed the selected channels.')
 })
 
 export const PublishContentResponse = zod.object({
@@ -339,9 +421,16 @@ export const PublishContentResponse = zod.object({
   "title": zod.string(),
   "body": zod.string(),
   "channels": zod.array(zod.string()),
-  "status": zod.enum(['draft', 'scheduled', 'published', 'failed']),
+  "status": zod.enum(['draft', 'scheduled', 'publishing', 'published', 'partial', 'failed']),
   "imageUrl": zod.string().nullish(),
-  "createdAt": zod.coerce.date()
+  "createdAt": zod.coerce.date(),
+  "deliveries": zod.array(zod.object({
+  "channel": zod.enum(['telegram', 'vk', 'instagram']),
+  "target": zod.string(),
+  "status": zod.enum(['published', 'failed']),
+  "detail": zod.string(),
+  "externalId": zod.string().nullable()
+})).optional()
 })
 
 

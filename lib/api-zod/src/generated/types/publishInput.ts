@@ -8,5 +8,8 @@
 import type { PublishInputChannelsItem } from './publishInputChannelsItem';
 
 export interface PublishInput {
+  /** @minItems 1 */
   channels: PublishInputChannelsItem[];
+  /** Must be true after the user has reviewed the selected channels. */
+  confirmed: boolean;
 }

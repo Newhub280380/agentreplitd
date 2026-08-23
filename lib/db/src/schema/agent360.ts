@@ -74,6 +74,32 @@ export const contentItemsTable = pgTable("agent360_content", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+export const channelConnectionsTable = pgTable("agent360_channel_connections", {
+  id: text("id").primaryKey(),
+  workspaceId: text("workspace_id").notNull(),
+  provider: text("provider").notNull(),
+  target: text("target").notNull(),
+  credentialCiphertext: text("credential_ciphertext"),
+  isActive: boolean("is_active").notNull().default(true),
+  status: text("status").notNull().default("connected"),
+  lastCheckedAt: timestamp("last_checked_at", { withTimezone: true }),
+  lastError: text("last_error"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const publishDeliveriesTable = pgTable("agent360_publish_deliveries", {
+  id: text("id").primaryKey(),
+  workspaceId: text("workspace_id").notNull(),
+  contentId: text("content_id").notNull(),
+  connectionId: text("connection_id"),
+  provider: text("provider").notNull(),
+  target: text("target").notNull(),
+  status: text("status").notNull(),
+  detail: text("detail").notNull(),
+  externalId: text("external_id"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const builderJobsTable = pgTable("agent360_builder_jobs", {
   id: text("id").primaryKey(),
   workspaceId: text("workspace_id").notNull().default("system"),
