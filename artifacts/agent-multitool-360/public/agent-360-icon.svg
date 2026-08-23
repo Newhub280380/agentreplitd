@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title">
+  <title id="title">Агент-мультитул 360</title>
+  <rect width="512" height="512" rx="112" fill="#08100e"/>
+  <circle cx="256" cy="256" r="178" fill="none" stroke="#a4f7ca" stroke-width="12" opacity=".36"/>
+  <circle cx="256" cy="256" r="132" fill="#102a1e" stroke="#d6ed73" stroke-width="10"/>
+  <path d="M256 112v76M256 324v76M112 256h76M324 256h76" stroke="#a4f7ca" stroke-width="14" stroke-linecap="round"/>
+  <path d="M204 224l52-30 52 30v64l-52 30-52-30z" fill="#a4f7ca"/>
+  <circle cx="256" cy="256" r="25" fill="#08100e"/>
+  <text x="256" y="454" text-anchor="middle" fill="#d6ed73" font-family="Arial,sans-serif" font-size="42" font-weight="700">360</text>
+</svg>

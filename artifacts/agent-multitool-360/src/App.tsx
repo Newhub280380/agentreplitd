@@ -21,6 +21,7 @@ import ContentPage from "@/pages/content";
 import BuilderPage from "@/pages/builder";
 import SettingsPage from "@/pages/settings";
 import LandingPage from "@/pages/landing";
+import { InstallAppPrompt } from "@/components/install-app-prompt";
 import "@/styles/auth-core.css";
 
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, '');
@@ -168,10 +169,10 @@ function WorkspaceRouter() {
   }
   if (!isSignedIn) return <LandingPage />;
 
-  return <Switch>
+  return <><InstallAppPrompt /><Switch>
     <Route path="/" component={DashboardWorkspace} />
     <Route component={LegacyWorkspace} />
-  </Switch>;
+  </Switch></>;
 }
 
 function DashboardWorkspace() {

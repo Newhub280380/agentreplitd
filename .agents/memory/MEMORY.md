@@ -4,3 +4,4 @@
 - [Stripe webhook credential throttling](stripe-webhook-credential-throttling.md) — retry transient connector 429s so a webhook burst is not rejected as a failed billing event.
 - [Mockup graduation shell checks](mockup-graduation-production-shell.md) — validate the production parent shell, not only the isolated mockup, before calling a visual redesign complete.
 - [Scoped workspace themes](scoped-workspace-themes.md) — reset semantic component tokens locally as well as explicit legacy utilities when migrating one route family.
+- [PWA workspace data safety](pwa-workspace-data-safety.md) — keep the service worker away from authenticated API and Clerk responses to protect workspace isolation.
