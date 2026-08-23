@@ -8,6 +8,7 @@ if (!process.env.DATABASE_URL) {
 export default defineConfig({
   schema: path.join(__dirname, "./src/schema/index.ts"),
   dialect: "postgresql",
+  tablesFilter: ["!agent360_schema_migrations"],
   dbCredentials: {
     url: process.env.DATABASE_URL,
   },
