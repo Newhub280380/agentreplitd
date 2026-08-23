@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { ContentItemStatus } from './contentItemStatus';
+import type { PublishDelivery } from './publishDelivery';
 
 export interface ContentItem {
   id: string;
@@ -16,4 +17,5 @@ export interface ContentItem {
   /** @nullable */
   imageUrl?: string | null;
   createdAt: Date;
+  deliveries?: PublishDelivery[];
 }

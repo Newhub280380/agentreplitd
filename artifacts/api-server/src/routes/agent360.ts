@@ -1,8 +1,17 @@
 import { Router, type IRouter, type NextFunction, type Request, type Response } from "express";
 import { getAuth } from "@clerk/express";
 import {
+  CreateBillingCheckoutBody,
+  CreateBillingCheckoutResponse,
+  CreateBillingPortalResponse,
   CreateBuilderJobBody,
   CreateBuilderJobResponse,
+  CheckChannelConnectionParams,
+  CheckChannelConnectionResponse,
+  ConnectChannelBody,
+  ConnectChannelResponse,
+  DisconnectChannelParams,
+  DisconnectChannelResponse,
   GenerateContentBody,
   GenerateContentResponse,
   GetActivitiesResponse,
@@ -33,6 +42,7 @@ import {
   addAnalysisInsights,
   completeRun,
   createBuilderJob,
+  createChannelConnection,
   createContent,
   createRun,
   ensureWorkspace,
@@ -40,21 +50,36 @@ import {
   getActivities,
   getBuilderJob,
   getBuilderJobs,
+  getConnections,
   getContent,
   getInsights,
   getRun,
   getRuns,
+  checkChannelConnection,
+  disconnectChannelConnection,
+  isSupportedChannel,
   publishContent,
   planCatalog,
+  persistStripeCheckoutSession,
+  releaseStripeCheckout,
+  reserveStripeCheckout,
   updateBuilderJob,
+  verifyChannelTarget,
 } from "../lib/agent360-store";
+import {
+  createBillingPortal,
+  createCheckoutForWorkspace,
+  isPaidPlanId,
+} from "../lib/stripeService";
 
 const router: IRouter = Router();
 const builderLogPath = path.resolve(process.cwd(), "agent360-builder.log");
-type AuthenticatedRequest = Request & { userId: string };
+export type AuthResolver = (req: Request) => string | null | undefined;
+type AuthenticatedRequest = Request & { userId: string; authResolver?: AuthResolver };
 
 function requireAuth(req: Request, res: Response, next: NextFunction): void {
-  const userId = getAuth(req).userId;
+  const authResolver = (req as AuthenticatedRequest).authResolver;
+  const userId = authResolver ? authResolver(req) : getAuth(req).userId;
   if (!userId) {
     res.status(401).json({ error: "Sign in is required to access a workspace." });
     return;
@@ -65,6 +90,12 @@ function requireAuth(req: Request, res: Response, next: NextFunction): void {
 
 function getWorkspace(req: Request) {
   return ensureWorkspace((req as AuthenticatedRequest).userId);
+}
+
+function getPublicAppUrl(req: Request): string {
+  const configuredDomain = process.env.REPLIT_DOMAINS?.split(",")[0];
+  if (configuredDomain) return `https://${configuredDomain}`;
+  throw new Error("A canonical application domain is required for billing redirects.");
 }
 
 const toRun = (run: Awaited<ReturnType<typeof getRun>>) =>
@@ -180,6 +211,69 @@ router.get("/account", async (req, res): Promise<void> => {
   res.json(GetAccountOverviewResponse.parse(account));
 });
 
+router.post("/billing/checkout", async (req, res): Promise<void> => {
+  const body = CreateBillingCheckoutBody.safeParse(req.body);
+  if (!body.success || !isPaidPlanId(body.data.plan)) {
+    res.status(400).json({ error: "Choose an available paid plan." });
+    return;
+  }
+
+  const workspace = await getWorkspace(req);
+  if (
+    workspace.plan === body.data.plan &&
+    (workspace.subscriptionStatus === "active" || workspace.subscriptionStatus === "trialing")
+  ) {
+    res.status(409).json({ error: "This workspace already has the selected plan." });
+    return;
+  }
+  if (
+    workspace.stripeSubscriptionId &&
+    !["canceled", "incomplete_expired", "unpaid"].includes(workspace.subscriptionStatus)
+  ) {
+    res.status(409).json({ error: "Manage the existing subscription in the billing portal before changing plans." });
+    return;
+  }
+
+  const checkoutExpiresAt = await reserveStripeCheckout(workspace.id, body.data.plan);
+  if (!checkoutExpiresAt) {
+    res.status(409).json({ error: "A payment session is already being prepared for this workspace." });
+    return;
+  }
+
+  try {
+    const appUrl = getPublicAppUrl(req);
+    const checkout = await createCheckoutForWorkspace({
+      workspace,
+      planId: body.data.plan,
+      successUrl: `${appUrl}/settings?billing=success`,
+      cancelUrl: `${appUrl}/settings?billing=cancelled`,
+      expiresAt: checkoutExpiresAt,
+    });
+    await persistStripeCheckoutSession(workspace.id, checkout.id);
+    res.json(CreateBillingCheckoutResponse.parse({ url: checkout.url }));
+  } catch (err) {
+    await releaseStripeCheckout(workspace.id);
+    req.log.error({ err }, "Unable to create Stripe checkout session");
+    res.status(502).json({ error: "Payment checkout is temporarily unavailable. Please try again." });
+  }
+});
+
+router.post("/billing/portal", async (req, res): Promise<void> => {
+  const workspace = await getWorkspace(req);
+  if (!workspace.stripeCustomerId) {
+    res.status(400).json({ error: "No Stripe billing profile exists for this workspace yet." });
+    return;
+  }
+
+  try {
+    const url = await createBillingPortal(workspace.stripeCustomerId, `${getPublicAppUrl(req)}/settings`);
+    res.json(CreateBillingPortalResponse.parse({ url }));
+  } catch (err) {
+    req.log.error({ err }, "Unable to create Stripe billing portal session");
+    res.status(502).json({ error: "Subscription management is temporarily unavailable. Please try again." });
+  }
+});
+
 router.get("/dashboard/summary", async (req, res): Promise<void> => {
   const workspace = await getWorkspace(req);
   const [runs, insights, content] = await Promise.all([
@@ -187,13 +281,14 @@ router.get("/dashboard/summary", async (req, res): Promise<void> => {
     getInsights(workspace.id),
     getContent(workspace.id),
   ]);
+  const connections = await getConnections(workspace.id);
   res.json(
     GetDashboardSummaryResponse.parse({
       activeRuns: runs.filter((run) => run.status === "running").length,
       insights: insights.length,
       drafts: content.filter((item) => item.status === "draft").length,
       published: content.filter((item) => item.status === "published").length,
-      connectedChannels: 0,
+      connectedChannels: connections.filter((connection) => connection.category === "channel" && connection.status === "connected").length,
       systemStatus: "operational",
     }),
   );
@@ -216,18 +311,87 @@ router.get("/agents", (_req, res): void => {
   );
 });
 
-router.get("/connections", (_req, res): void => {
-  res.json(
-    GetConnectionsResponse.parse([
-      { id: "youtube", provider: "YouTube / yt-dlp", category: "source", status: "configured", detail: "Локальный сборщик подготовлен." },
-      { id: "search", provider: "Google + Brave", category: "source", status: "needs_setup", detail: "Добавьте ключи поисковых провайдеров для живой выдачи." },
-      { id: "telegram", provider: "Telegram Bot API", category: "channel", status: "needs_setup", detail: "Доступен коннектор Telegram; требуется авторизация." },
-      { id: "vk", provider: "VK API", category: "channel", status: "needs_setup", detail: "Нужен токен сообщества в защищённых переменных." },
-      { id: "payments", provider: "ЮKassa / CloudPayments", category: "payment", status: "needs_setup", detail: "Подключите платёжного провайдера перед отправкой ссылок." },
-      { id: "memory", provider: "PostgreSQL memory", category: "memory", status: "connected", detail: "Журнал, инсайты и память хранятся в Replit Postgres." },
-      { id: "ai", provider: "Replit AI / OpenAI", category: "ai", status: "connected", detail: "LLM включена для суммаризации и контента." },
-    ]),
+router.get("/connections", async (req, res): Promise<void> => {
+  const workspace = await getWorkspace(req);
+  res.json(GetConnectionsResponse.parse(await getConnections(workspace.id)));
+});
+
+router.post("/connections", async (req, res): Promise<void> => {
+  const body = ConnectChannelBody.safeParse(req.body);
+  if (!body.success) {
+    res.status(400).json({ error: body.error.message });
+    return;
+  }
+  if (!isSupportedChannel(body.data.provider)) {
+    res.status(400).json({ error: "This channel is not allowed." });
+    return;
+  }
+  const workspace = await getWorkspace(req);
+  const verification = await verifyChannelTarget(body.data.provider, body.data.target.trim(), body.data.credential);
+  if (!verification.verified) {
+    res.status(400).json({ error: verification.detail });
+    return;
+  }
+  const connection = await createChannelConnection(
+    workspace.id,
+    body.data.provider,
+    verification.target ?? body.data.target.trim(),
+    body.data.credential,
   );
+  res.status(201).json(ConnectChannelResponse.parse({
+    id: connection.id,
+    provider: body.data.provider === "telegram" ? "Telegram Bot API" : body.data.provider === "vk" ? "VK API" : "Instagram Graph API",
+    category: "channel",
+    status: "connected",
+    detail: `Канал подключён: ${connection.target}.`,
+    channel: body.data.provider,
+    target: connection.target,
+    lastCheckedAt: connection.lastCheckedAt,
+    canDisconnect: true,
+  }));
+});
+
+router.post("/connections/:id/check", async (req, res): Promise<void> => {
+  const params = CheckChannelConnectionParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+  const workspace = await getWorkspace(req);
+  const connection = await checkChannelConnection(workspace.id, params.data.id);
+  if (!connection || !isSupportedChannel(connection.provider)) {
+    res.status(404).json({ error: "Channel connection not found" });
+    return;
+  }
+  const status = connection.status === "connected" ? "connected" : "needs_setup";
+  res.json(CheckChannelConnectionResponse.parse({
+    id: connection.id,
+    provider: connection.provider === "telegram" ? "Telegram Bot API" : connection.provider === "vk" ? "VK API" : "Instagram Graph API",
+    category: "channel",
+    status,
+    detail: status === "connected"
+      ? `Канал подключён: ${connection.target}. Проверка завершена.`
+      : connection.lastError ?? "Канал не прошёл проверку. Повторите попытку позже.",
+    channel: connection.provider,
+    target: connection.target,
+    lastCheckedAt: connection.lastCheckedAt,
+    canDisconnect: true,
+  }));
+});
+
+router.delete("/connections/:id", async (req, res): Promise<void> => {
+  const params = DisconnectChannelParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+  const workspace = await getWorkspace(req);
+  const connection = await disconnectChannelConnection(workspace.id, params.data.id);
+  if (!connection) {
+    res.status(404).json({ error: "Channel connection not found" });
+    return;
+  }
+  res.json(DisconnectChannelResponse.parse({ success: true }));
 });
 
 router.get("/runs", async (req, res): Promise<void> => {
@@ -336,13 +500,30 @@ router.post("/content/:id/publish", async (req, res): Promise<void> => {
     res.status(400).json({ error });
     return;
   }
+  if (!body.data.confirmed) {
+    res.status(400).json({ error: "Publication must be explicitly confirmed." });
+    return;
+  }
   const workspace = await getWorkspace(req);
-  const content = await publishContent(workspace.id, params.data.id, body.data.channels);
-  if (!content) {
+  const result = await publishContent(workspace.id, params.data.id, body.data.channels);
+  if (!result) {
     res.status(404).json({ error: "Content not found" });
     return;
   }
-  res.json(PublishContentResponse.parse(content));
+  if ("error" in result) {
+    if (result.error === "only_drafts") {
+      res.status(409).json({ error: "Only draft content can be published." });
+      return;
+    }
+    if (result.error === "duplicate_channels" || result.error === "channel_not_selected") {
+      res.status(400).json({ error: "Selected channels must be unique and included in the content draft." });
+      return;
+    }
+    const missingChannels = result.channels ?? [];
+    res.status(409).json({ error: `Connect selected channels before publishing: ${missingChannels.join(", ")}` });
+    return;
+  }
+  res.json(PublishContentResponse.parse({ ...result.item, deliveries: result.deliveries }));
 });
 
 router.get("/builder/jobs", async (req, res): Promise<void> => {

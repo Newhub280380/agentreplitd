@@ -60,11 +60,63 @@ export interface UsageSummary {
   limits: UsageLimits;
 }
 
+export type SubscriptionSummaryProvider = typeof SubscriptionSummaryProvider[keyof typeof SubscriptionSummaryProvider];
+
+
+export const SubscriptionSummaryProvider = {
+  stripe: 'stripe',
+} as const;
+
+export type SubscriptionSummaryStatus = typeof SubscriptionSummaryStatus[keyof typeof SubscriptionSummaryStatus];
+
+
+export const SubscriptionSummaryStatus = {
+  inactive: 'inactive',
+  incomplete: 'incomplete',
+  incomplete_expired: 'incomplete_expired',
+  trialing: 'trialing',
+  active: 'active',
+  past_due: 'past_due',
+  canceled: 'canceled',
+  unpaid: 'unpaid',
+  paused: 'paused',
+} as const;
+
+export interface SubscriptionSummary {
+  provider: SubscriptionSummaryProvider;
+  status: SubscriptionSummaryStatus;
+  /** @nullable */
+  currentPeriodEnd: string | null;
+  cancelAtPeriodEnd: boolean;
+  manageAvailable: boolean;
+}
+
 export interface AccountOverview {
   workspace: Workspace;
   plan: Plan;
   usage: UsageSummary;
+  subscription: SubscriptionSummary;
   plans: Plan[];
+}
+
+export type CheckoutInputPlan = typeof CheckoutInputPlan[keyof typeof CheckoutInputPlan];
+
+
+export const CheckoutInputPlan = {
+  starter: 'starter',
+  pro: 'pro',
+} as const;
+
+export interface CheckoutInput {
+  plan: CheckoutInputPlan;
+}
+
+export interface CheckoutSession {
+  url: string;
+}
+
+export interface BillingPortalSession {
+  url: string;
 }
 
 export type DashboardSummarySystemStatus = typeof DashboardSummarySystemStatus[keyof typeof DashboardSummarySystemStatus];
@@ -154,12 +206,54 @@ export const ConnectionStatusStatus = {
   unavailable: 'unavailable',
 } as const;
 
+export type ConnectionStatusChannel = typeof ConnectionStatusChannel[keyof typeof ConnectionStatusChannel];
+
+
+export const ConnectionStatusChannel = {
+  telegram: 'telegram',
+  vk: 'vk',
+  instagram: 'instagram',
+} as const;
+
 export interface ConnectionStatus {
   id: string;
   provider: string;
   category: ConnectionStatusCategory;
   status: ConnectionStatusStatus;
   detail: string;
+  channel?: ConnectionStatusChannel;
+  /** @nullable */
+  target?: string | null;
+  /** @nullable */
+  lastCheckedAt?: string | null;
+  canDisconnect?: boolean;
+}
+
+export type ConnectChannelInputProvider = typeof ConnectChannelInputProvider[keyof typeof ConnectChannelInputProvider];
+
+
+export const ConnectChannelInputProvider = {
+  telegram: 'telegram',
+  vk: 'vk',
+  instagram: 'instagram',
+} as const;
+
+export interface ConnectChannelInput {
+  provider: ConnectChannelInputProvider;
+  /**
+     * @minLength 1
+     * @maxLength 200
+     */
+  target: string;
+  /**
+     * Sent once over HTTPS, encrypted server-side, and never returned by the API.
+     * @minLength 8
+     */
+  credential: string;
+}
+
+export interface ConnectionActionResponse {
+  success: boolean;
 }
 
 export type RunKind = typeof RunKind[keyof typeof RunKind];
@@ -271,9 +365,37 @@ export type ContentItemStatus = typeof ContentItemStatus[keyof typeof ContentIte
 export const ContentItemStatus = {
   draft: 'draft',
   scheduled: 'scheduled',
+  publishing: 'publishing',
+  published: 'published',
+  partial: 'partial',
+  failed: 'failed',
+} as const;
+
+export type PublishDeliveryChannel = typeof PublishDeliveryChannel[keyof typeof PublishDeliveryChannel];
+
+
+export const PublishDeliveryChannel = {
+  telegram: 'telegram',
+  vk: 'vk',
+  instagram: 'instagram',
+} as const;
+
+export type PublishDeliveryStatus = typeof PublishDeliveryStatus[keyof typeof PublishDeliveryStatus];
+
+
+export const PublishDeliveryStatus = {
   published: 'published',
   failed: 'failed',
 } as const;
+
+export interface PublishDelivery {
+  channel: PublishDeliveryChannel;
+  target: string;
+  status: PublishDeliveryStatus;
+  detail: string;
+  /** @nullable */
+  externalId: string | null;
+}
 
 export interface ContentItem {
   id: string;
@@ -284,6 +406,7 @@ export interface ContentItem {
   /** @nullable */
   imageUrl?: string | null;
   createdAt: string;
+  deliveries?: PublishDelivery[];
 }
 
 export type PublishInputChannelsItem = typeof PublishInputChannelsItem[keyof typeof PublishInputChannelsItem];
@@ -296,7 +419,10 @@ export const PublishInputChannelsItem = {
 } as const;
 
 export interface PublishInput {
+  /** @minItems 1 */
   channels: PublishInputChannelsItem[];
+  /** Must be true after the user has reviewed the selected channels. */
+  confirmed: boolean;
 }
 
 export type BuilderInputKind = typeof BuilderInputKind[keyof typeof BuilderInputKind];

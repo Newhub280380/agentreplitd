@@ -1,25 +1,52 @@
 import { useState } from "react"
-import { useGetContent, useGenerateContent, usePublishContent, getGetContentQueryKey } from "@workspace/api-client-react"
+import {
+  useGetConnections,
+  useGetContent,
+  useGenerateContent,
+  usePublishContent,
+  getGetContentQueryKey,
+} from "@workspace/api-client-react"
 import { useQueryClient } from "@tanstack/react-query"
 import { 
   Card, CardHeader, CardTitle, CardContent, 
-  Button, Input, Label, Textarea, LoadingState, ErrorState,
-  Badge, Select
+  Button, Input, Label, Textarea, LoadingState, ErrorState, Badge,
 } from "@/components/ui"
-import { Send, PenTool, LayoutGrid } from "lucide-react"
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import { Send, PenTool, LayoutGrid, ShieldCheck } from "lucide-react"
 import { formatDate } from "@/lib/utils"
+import { useToast } from "@/hooks/use-toast"
+
+const channelOptions = ["telegram", "vk", "instagram"] as const
+type Channel = (typeof channelOptions)[number]
 
 export default function ContentPage() {
   const queryClient = useQueryClient();
   const { data: contents, isLoading, error } = useGetContent();
+  const { data: connections } = useGetConnections();
   const generateContent = useGenerateContent();
   const publishContent = usePublishContent();
+  const { toast } = useToast();
 
   const [topic, setTopic] = useState("");
   const [tone, setTone] = useState("Professional, authoritative");
-  const [channels, setChannels] = useState<string[]>(['telegram']);
+  const [channels, setChannels] = useState<Channel[]>(['telegram']);
+  const [publication, setPublication] = useState<{
+    id: string;
+    title: string;
+    availableChannels: Channel[];
+    channels: Channel[];
+  } | null>(null);
 
-  const toggleChannel = (channel: string) => {
+  const connectedChannels = new Set(
+    connections
+      ?.filter((connection) => connection.category === "channel" && connection.status === "connected" && connection.channel)
+      .map((connection) => connection.channel as Channel) ?? [],
+  );
+
+  const toggleChannel = (channel: Channel) => {
     setChannels(prev => 
       prev.includes(channel) ? prev.filter(c => c !== channel) : [...prev, channel]
     );
@@ -29,26 +56,63 @@ export default function ContentPage() {
     e.preventDefault();
     if (!topic.trim() || channels.length === 0) return;
     
-    generateContent.mutate({ data: { topic, channels: channels as any, tone } }, {
+    generateContent.mutate({ data: { topic, channels, tone } }, {
       onSuccess: () => {
         setTopic("");
         queryClient.invalidateQueries({ queryKey: getGetContentQueryKey() });
-      }
+      },
+      onError: (mutationError) => toast({
+        variant: "destructive",
+        title: "Не удалось создать черновик",
+        description: mutationError.message,
+      }),
     });
   }
 
-  const handlePublish = (id: string, itemChannels: string[]) => {
-    publishContent.mutate({ id, data: { channels: itemChannels as any } }, {
-      onSuccess: () => {
+  const openPublication = (id: string, title: string, itemChannels: string[]) => {
+    const available = itemChannels.filter((channel): channel is Channel =>
+      channelOptions.includes(channel as Channel) && connectedChannels.has(channel as Channel),
+    );
+    setPublication({ id, title, availableChannels: available, channels: available });
+  };
+
+  const togglePublicationChannel = (channel: Channel) => {
+    setPublication((current) => current
+      ? { ...current, channels: current.channels.includes(channel)
+        ? current.channels.filter((value) => value !== channel)
+        : [...current.channels, channel] }
+      : null);
+  };
+
+  const confirmPublication = () => {
+    if (!publication || publication.channels.length === 0) return;
+    publishContent.mutate({ id: publication.id, data: { channels: publication.channels, confirmed: true } }, {
+      onSuccess: (result) => {
         queryClient.invalidateQueries({ queryKey: getGetContentQueryKey() });
-      }
+        setPublication(null);
+        const failed = result.deliveries?.filter((delivery) => delivery.status === "failed") ?? [];
+        toast({
+          variant: failed.length ? "destructive" : "default",
+          title: failed.length ? "Публикация завершена с ошибками" : "Публикация завершена",
+          description: failed.length
+            ? `Не доставлено: ${failed.map((delivery) => delivery.channel).join(", ")}. Подробности сохранены в журнале.`
+            : "Результаты доставки сохранены в журнале workspace.",
+        });
+      },
+      onError: (mutationError) => toast({
+        variant: "destructive",
+        title: "Публикация не отправлена",
+        description: mutationError.message,
+      }),
     });
   }
 
   const getStatusColor = (status: string) => {
     switch(status) {
       case 'published': return 'success';
-      case 'scheduled': return 'warning';
+      case 'scheduled':
+      case 'publishing':
+      case 'partial': return 'warning';
       case 'failed': return 'destructive';
       default: return 'outline';
     }
@@ -89,7 +153,7 @@ export default function ContentPage() {
               <div className="space-y-2">
                 <Label>Target Channels</Label>
                 <div className="flex flex-wrap gap-2">
-                  {['telegram', 'vk', 'instagram'].map(ch => (
+                  {channelOptions.map(ch => (
                     <button
                       key={ch}
                       type="button"
@@ -159,8 +223,8 @@ export default function ContentPage() {
                   {item.status === 'draft' && (
                     <Button 
                       size="sm" 
-                      onClick={() => handlePublish(item.id, item.channels)}
-                      disabled={publishContent.isPending}
+                      onClick={() => openPublication(item.id, item.title, item.channels)}
+                      disabled={publishContent.isPending || !item.channels.some((channel) => connectedChannels.has(channel as Channel))}
                     >
                       <Send className="h-3 w-3 mr-2" />
                       Publish
@@ -177,6 +241,46 @@ export default function ContentPage() {
           )}
         </div>
       )}
+      <AlertDialog open={Boolean(publication)} onOpenChange={(open) => !open && setPublication(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <ShieldCheck className="h-5 w-5 text-primary" />
+              Подтвердить публикацию
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Материал «{publication?.title}» будет отправлен в выбранные каналы. Это действие нельзя отменить после приёма каналом.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="space-y-2 border-y py-4">
+            <p className="font-mono text-xs text-muted-foreground">ДОСТУПНЫЕ ПОДКЛЮЧЁННЫЕ КАНАЛЫ</p>
+            {publication?.availableChannels.length === 0 ? (
+              <p className="text-sm text-destructive">Нет подключённых каналов из целей этого черновика. Подключите канал в настройках.</p>
+            ) : (
+              publication?.availableChannels.map((channel) => (
+                <label key={channel} className="flex cursor-pointer items-center justify-between border bg-zinc-50 p-3">
+                  <span className="font-display text-sm font-bold uppercase">{channel}</span>
+                  <input
+                    type="checkbox"
+                    checked={publication.channels.includes(channel)}
+                    onChange={() => togglePublicationChannel(channel)}
+                    className="h-4 w-4 accent-primary"
+                  />
+                </label>
+              ))
+            )}
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Отмена</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmPublication}
+              disabled={publishContent.isPending || !publication?.channels.length}
+            >
+              {publishContent.isPending ? "Отправляем…" : "Подтверждаю отправку"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

@@ -82,6 +82,70 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/Plan"
+  /billing/checkout:
+    post:
+      operationId: createBillingCheckout
+      tags: [account]
+      summary: Create a hosted Stripe checkout session for a paid workspace plan
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CheckoutInput"
+      responses:
+        "200":
+          description: Checkout session created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckoutSession"
+        "400":
+          description: Invalid plan or missing billing profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          description: Workspace already has the selected plan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Stripe is temporarily unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /billing/portal:
+    post:
+      operationId: createBillingPortal
+      tags: [account]
+      summary: Create a hosted Stripe billing portal session
+      responses:
+        "200":
+          description: Billing portal session created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BillingPortalSession"
+        "400":
+          description: No billing profile exists for this workspace
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "502":
+          description: Stripe is temporarily unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /activities:
     get:
       operationId: getActivities
@@ -118,7 +182,7 @@ paths:
     get:
       operationId: getConnections
       tags: [system]
-      summary: List configured external service adapters
+      summary: List workspace-scoped external adapters and publishing channels
       responses:
         "200":
           description: Connection statuses
@@ -130,6 +194,73 @@ paths:
                   $ref: "#/components/schemas/ConnectionStatus"
         "401":
           $ref: "#/components/responses/Unauthorized"
+    post:
+      operationId: connectChannel
+      tags: [content]
+      summary: Connect a permitted publishing channel to the signed-in workspace
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConnectChannelInput"
+      responses:
+        "201":
+          description: Connected channel
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConnectionStatus"
+        "400":
+          description: Invalid channel configuration
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          description: Channel access could not be verified
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /connections/{id}/check:
+    post:
+      operationId: checkChannelConnection
+      tags: [content]
+      summary: Verify that a workspace-scoped channel credential can publish to its target
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          description: Verified channel status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConnectionStatus"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Channel connection not found
+  /connections/{id}:
+    delete:
+      operationId: disconnectChannel
+      tags: [content]
+      summary: Disconnect a workspace publishing channel without exposing credentials
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          description: Channel disconnected
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConnectionActionResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Channel connection not found
   /runs:
     get:
       operationId: getRuns
@@ -285,6 +416,12 @@ paths:
                 $ref: "#/components/schemas/ContentItem"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "409":
+          description: One or more selected channels are not connected or content is no longer a draft
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "404":
           description: Content not found
   /builder/jobs:
@@ -420,7 +557,7 @@ components:
           $ref: "#/components/schemas/UsageLimits"
     AccountOverview:
       type: object
-      required: [workspace, plan, usage, plans]
+      required: [workspace, plan, usage, subscription, plans]
       properties:
         workspace:
           $ref: "#/components/schemas/Workspace"
@@ -428,10 +565,38 @@ components:
           $ref: "#/components/schemas/Plan"
         usage:
           $ref: "#/components/schemas/UsageSummary"
+        subscription:
+          $ref: "#/components/schemas/SubscriptionSummary"
         plans:
           type: array
           items:
             $ref: "#/components/schemas/Plan"
+    SubscriptionSummary:
+      type: object
+      required: [provider, status, currentPeriodEnd, cancelAtPeriodEnd, manageAvailable]
+      properties:
+        provider: { type: string, enum: [stripe] }
+        status:
+          type: string
+          enum: [inactive, incomplete, incomplete_expired, trialing, active, past_due, canceled, unpaid, paused]
+        currentPeriodEnd: { type: ["string", "null"], format: date-time }
+        cancelAtPeriodEnd: { type: boolean }
+        manageAvailable: { type: boolean }
+    CheckoutInput:
+      type: object
+      required: [plan]
+      properties:
+        plan: { type: string, enum: [starter, pro] }
+    CheckoutSession:
+      type: object
+      required: [url]
+      properties:
+        url: { type: string }
+    BillingPortalSession:
+      type: object
+      required: [url]
+      properties:
+        url: { type: string }
     DashboardSummary:
       type: object
       required: [activeRuns, insights, drafts, published, connectedChannels, systemStatus]
@@ -471,6 +636,25 @@ components:
         category: { type: string, enum: [source, channel, payment, memory, ai] }
         status: { type: string, enum: [connected, configured, needs_setup, unavailable] }
         detail: { type: string }
+        channel: { type: string, enum: [telegram, vk, instagram] }
+        target: { type: ["string", "null"] }
+        lastCheckedAt: { type: ["string", "null"], format: date-time }
+        canDisconnect: { type: boolean }
+    ConnectChannelInput:
+      type: object
+      required: [provider, target, credential]
+      properties:
+        provider: { type: string, enum: [telegram, vk, instagram] }
+        target: { type: string, minLength: 1, maxLength: 200 }
+        credential:
+          type: string
+          minLength: 8
+          description: Sent once over HTTPS, encrypted server-side, and never returned by the API.
+    ConnectionActionResponse:
+      type: object
+      required: [success]
+      properties:
+        success: { type: boolean }
     Run:
       type: object
       required: [id, command, kind, status, startedAt, steps]
@@ -538,16 +722,34 @@ components:
         channels:
           type: array
           items: { type: string }
-        status: { type: string, enum: [draft, scheduled, published, failed] }
+        status: { type: string, enum: [draft, scheduled, publishing, published, partial, failed] }
         imageUrl: { type: ["string", "null"] }
         createdAt: { type: string, format: date-time }
+        deliveries:
+          type: array
+          items:
+            $ref: "#/components/schemas/PublishDelivery"
     PublishInput:
       type: object
-      required: [channels]
+      required: [channels, confirmed]
       properties:
         channels:
           type: array
+          minItems: 1
+          uniqueItems: true
           items: { type: string, enum: [telegram, vk, instagram] }
+        confirmed:
+          type: boolean
+          description: Must be true after the user has reviewed the selected channels.
+    PublishDelivery:
+      type: object
+      required: [channel, target, status, detail, externalId]
+      properties:
+        channel: { type: string, enum: [telegram, vk, instagram] }
+        target: { type: string }
+        status: { type: string, enum: [published, failed] }
+        detail: { type: string }
+        externalId: { type: ["string", "null"] }
     BuilderInput:
       type: object
       required: [kind, instruction]
