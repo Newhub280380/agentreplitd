@@ -84,6 +84,8 @@ after(async () => {
       "agent360_runs",
       "agent360_insights",
       "agent360_content",
+      "agent360_publish_deliveries",
+      "agent360_channel_connections",
       "agent360_builder_jobs",
       "agent360_workspace_usage",
     ]) {
@@ -138,17 +140,38 @@ describe("agent 360 authentication and quota regression", () => {
 
     const crossUserPublish = await request(`/api/content/${aliceContent.id}/publish`, bob, {
       method: "POST",
-      body: JSON.stringify({ channels: ["vk"] }),
+      body: JSON.stringify({ channels: ["vk"], confirmed: true }),
     });
     assert.equal(crossUserPublish.status, 404);
     assertErrorResponse(await json(crossUserPublish));
 
+    const unconfirmedPublish = await request(`/api/content/${aliceContent.id}/publish`, alice, {
+      method: "POST",
+      body: JSON.stringify({ channels: ["vk"], confirmed: false }),
+    });
+    assert.equal(unconfirmedPublish.status, 400);
+    assertErrorResponse(await json(unconfirmedPublish));
+
+    const wrongChannelPublish = await request(`/api/content/${aliceContent.id}/publish`, alice, {
+      method: "POST",
+      body: JSON.stringify({ channels: ["vk"], confirmed: true }),
+    });
+    assert.equal(wrongChannelPublish.status, 400);
+    assertErrorResponse(await json(wrongChannelPublish));
+
+    const duplicateChannelPublish = await request(`/api/content/${aliceContent.id}/publish`, alice, {
+      method: "POST",
+      body: JSON.stringify({ channels: ["telegram", "telegram"], confirmed: true }),
+    });
+    assert.equal(duplicateChannelPublish.status, 400);
+    assertErrorResponse(await json(duplicateChannelPublish));
+
     const ownerPublish = await request(`/api/content/${aliceContent.id}/publish`, alice, {
       method: "POST",
-      body: JSON.stringify({ channels: ["vk"] }),
+      body: JSON.stringify({ channels: ["telegram"], confirmed: true }),
     });
-    assert.equal(ownerPublish.status, 200);
-    assert.equal(GenerateContentResponse.parse(await json(ownerPublish)).status, "published");
+    assert.equal(ownerPublish.status, 409);
+    assertErrorResponse(await json(ownerPublish));
 
     const afterSignOut = await request("/api/account", undefined);
     assert.equal(afterSignOut.status, 401);

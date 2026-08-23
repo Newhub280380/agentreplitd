@@ -30,6 +30,8 @@ import type {
   CheckoutInput,
   CheckoutSession,
   CommandInput,
+  ConnectChannelInput,
+  ConnectionActionResponse,
   ConnectionStatus,
   ContentInput,
   ContentItem,
@@ -685,7 +687,7 @@ export const getGetConnectionsUrl = () => {
 }
 
 /**
- * @summary List configured external service adapters
+ * @summary List workspace-scoped external adapters and publishing channels
  */
 export const getConnections = async ( options?: Parameters<typeof customFetch>[1]): Promise<ConnectionStatus[]> => {
 
@@ -732,7 +734,7 @@ export type GetConnectionsQueryError = ErrorType<UnauthorizedResponse>
 
 
 /**
- * @summary List configured external service adapters
+ * @summary List workspace-scoped external adapters and publishing channels
  */
 
 export function useGetConnections<TData = Awaited<ReturnType<typeof getConnections>>, TError = ErrorType<UnauthorizedResponse>>(
@@ -752,6 +754,219 @@ export function useGetConnections<TData = Awaited<ReturnType<typeof getConnectio
 
 
 
+
+export const getConnectChannelUrl = () => {
+
+
+
+
+  return `/api/connections`
+}
+
+/**
+ * @summary Connect a permitted publishing channel to the signed-in workspace
+ */
+export const connectChannel = async (connectChannelInput: ConnectChannelInput, options?: Parameters<typeof customFetch>[1]): Promise<ConnectionStatus> => {
+
+  return customFetch<ConnectionStatus>(getConnectChannelUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(connectChannelInput)
+  }
+);}
+
+
+
+
+
+export const getConnectChannelMutationOptions = <TError = ErrorType<ErrorResponse | UnauthorizedResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof connectChannel>>, TError,{data: BodyType<ConnectChannelInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof connectChannel>>, TError,{data: BodyType<ConnectChannelInput>}, TContext> => {
+
+const mutationKey = ['connectChannel'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof connectChannel>>, {data: BodyType<ConnectChannelInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  connectChannel(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ConnectChannelMutationResult = NonNullable<Awaited<ReturnType<typeof connectChannel>>>
+    export type ConnectChannelMutationBody = BodyType<ConnectChannelInput>
+    export type ConnectChannelMutationError = ErrorType<ErrorResponse | UnauthorizedResponse>
+
+    /**
+ * @summary Connect a permitted publishing channel to the signed-in workspace
+ */
+export const useConnectChannel = <TError = ErrorType<ErrorResponse | UnauthorizedResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof connectChannel>>, TError,{data: BodyType<ConnectChannelInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof connectChannel>>,
+        TError,
+        {data: BodyType<ConnectChannelInput>},
+        TContext
+      > => {
+      return useMutation(getConnectChannelMutationOptions(options));
+    }
+
+export const getCheckChannelConnectionUrl = (id: string,) => {
+
+
+
+
+  return `/api/connections/${id}/check`
+}
+
+/**
+ * @summary Verify that a workspace-scoped channel credential can publish to its target
+ */
+export const checkChannelConnection = async (id: string, options?: Parameters<typeof customFetch>[1]): Promise<ConnectionStatus> => {
+
+  return customFetch<ConnectionStatus>(getCheckChannelConnectionUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getCheckChannelConnectionMutationOptions = <TError = ErrorType<UnauthorizedResponse | void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof checkChannelConnection>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof checkChannelConnection>>, TError,{id: string}, TContext> => {
+
+const mutationKey = ['checkChannelConnection'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof checkChannelConnection>>, {id: string}> = (props) => {
+          const {id} = props ?? {};
+
+          return  checkChannelConnection(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CheckChannelConnectionMutationResult = NonNullable<Awaited<ReturnType<typeof checkChannelConnection>>>
+
+    export type CheckChannelConnectionMutationError = ErrorType<UnauthorizedResponse | void>
+
+    /**
+ * @summary Verify that a workspace-scoped channel credential can publish to its target
+ */
+export const useCheckChannelConnection = <TError = ErrorType<UnauthorizedResponse | void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof checkChannelConnection>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof checkChannelConnection>>,
+        TError,
+        {id: string},
+        TContext
+      > => {
+      return useMutation(getCheckChannelConnectionMutationOptions(options));
+    }
+
+export const getDisconnectChannelUrl = (id: string,) => {
+
+
+
+
+  return `/api/connections/${id}`
+}
+
+/**
+ * @summary Disconnect a workspace publishing channel without exposing credentials
+ */
+export const disconnectChannel = async (id: string, options?: Parameters<typeof customFetch>[1]): Promise<ConnectionActionResponse> => {
+
+  return customFetch<ConnectionActionResponse>(getDisconnectChannelUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDisconnectChannelMutationOptions = <TError = ErrorType<UnauthorizedResponse | void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof disconnectChannel>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof disconnectChannel>>, TError,{id: string}, TContext> => {
+
+const mutationKey = ['disconnectChannel'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof disconnectChannel>>, {id: string}> = (props) => {
+          const {id} = props ?? {};
+
+          return  disconnectChannel(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DisconnectChannelMutationResult = NonNullable<Awaited<ReturnType<typeof disconnectChannel>>>
+
+    export type DisconnectChannelMutationError = ErrorType<UnauthorizedResponse | void>
+
+    /**
+ * @summary Disconnect a workspace publishing channel without exposing credentials
+ */
+export const useDisconnectChannel = <TError = ErrorType<UnauthorizedResponse | void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof disconnectChannel>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof disconnectChannel>>,
+        TError,
+        {id: string},
+        TContext
+      > => {
+      return useMutation(getDisconnectChannelMutationOptions(options));
+    }
 
 export const getGetRunsUrl = () => {
 
@@ -1301,7 +1516,7 @@ export const publishContent = async (id: string,
 
 
 
-export const getPublishContentMutationOptions = <TError = ErrorType<UnauthorizedResponse | void>,
+export const getPublishContentMutationOptions = <TError = ErrorType<UnauthorizedResponse | void | ErrorResponse>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof publishContent>>, TError,{id: string;data: BodyType<PublishInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof publishContent>>, TError,{id: string;data: BodyType<PublishInput>}, TContext> => {
 
@@ -1330,12 +1545,12 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
     export type PublishContentMutationResult = NonNullable<Awaited<ReturnType<typeof publishContent>>>
     export type PublishContentMutationBody = BodyType<PublishInput>
-    export type PublishContentMutationError = ErrorType<UnauthorizedResponse | void>
+    export type PublishContentMutationError = ErrorType<UnauthorizedResponse | void | ErrorResponse>
 
     /**
  * @summary Publish content to selected channels
  */
-export const usePublishContent = <TError = ErrorType<UnauthorizedResponse | void>,
+export const usePublishContent = <TError = ErrorType<UnauthorizedResponse | void | ErrorResponse>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof publishContent>>, TError,{id: string;data: BodyType<PublishInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof publishContent>>,

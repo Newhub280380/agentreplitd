@@ -1,12 +1,15 @@
 import { and, desc, eq, isNull, lt, or, sql } from "drizzle-orm";
+import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
 import {
   activitiesTable,
   agentMemoriesTable,
   agentRunsTable,
   builderJobsTable,
+  channelConnectionsTable,
   contentItemsTable,
   db,
   insightsTable,
+  publishDeliveriesTable,
   stripeEventsTable,
   workspaceUsageTable,
   workspacesTable,
@@ -14,6 +17,142 @@ import {
 
 const now = () => new Date();
 const id = (prefix: string) => `${prefix}_${crypto.randomUUID().slice(0, 8)}`;
+
+export type ChannelProvider = "telegram" | "vk" | "instagram";
+
+const channelDefinitions: Record<
+  ChannelProvider,
+  { provider: string; targetHint: string }
+> = {
+  telegram: {
+    provider: "Telegram Bot API",
+    targetHint: "username канала или chat ID",
+  },
+  vk: {
+    provider: "VK API",
+    targetHint: "ID сообщества или публичный screen name",
+  },
+  instagram: {
+    provider: "Instagram Graph API",
+    targetHint: "ID бизнес-аккаунта",
+  },
+};
+
+function credentialKey(): Buffer {
+  const secret = process.env.SESSION_SECRET;
+  if (!secret) throw new Error("SESSION_SECRET is required to protect channel credentials.");
+  return createHash("sha256").update(secret).digest();
+}
+
+function encryptCredential(credential: string): string {
+  const iv = randomBytes(12);
+  const cipher = createCipheriv("aes-256-gcm", credentialKey(), iv);
+  const encrypted = Buffer.concat([cipher.update(credential, "utf8"), cipher.final()]);
+  return Buffer.concat([iv, cipher.getAuthTag(), encrypted]).toString("base64url");
+}
+
+function decryptCredential(ciphertext: string | null): string | null {
+  if (!ciphertext) return null;
+  try {
+    const payload = Buffer.from(ciphertext, "base64url");
+    const iv = payload.subarray(0, 12);
+    const authTag = payload.subarray(12, 28);
+    const encrypted = payload.subarray(28);
+    const decipher = createDecipheriv("aes-256-gcm", credentialKey(), iv);
+    decipher.setAuthTag(authTag);
+    return Buffer.concat([decipher.update(encrypted), decipher.final()]).toString("utf8");
+  } catch {
+    return null;
+  }
+}
+
+function connectionDetail(
+  provider: ChannelProvider,
+  target: string,
+  status: string,
+  lastCheckedAt: Date | null,
+  lastError: string | null,
+): string {
+  if (status !== "connected") {
+    return lastError ?? `Секрет канала не настроен. Добавьте его в Replit Secrets, затем повторите проверку.`;
+  }
+  const checked = lastCheckedAt
+    ? ` Проверено ${lastCheckedAt.toISOString()}.`
+    : "";
+  return `${channelDefinitions[provider].provider}: ${target}.${checked}`;
+}
+
+export function isSupportedChannel(provider: string): provider is ChannelProvider {
+  return provider in channelDefinitions;
+}
+
+export async function verifyChannelTarget(
+  provider: ChannelProvider,
+  target: string,
+  credential: string,
+): Promise<{ verified: boolean; detail: string; target: string | null }> {
+  try {
+    if (provider === "telegram") {
+      const botResponse = await fetch(`https://api.telegram.org/bot${credential}/getMe`, {
+        signal: AbortSignal.timeout(10_000),
+      });
+      const bot = (await botResponse.json()) as { ok?: boolean; result?: { id?: number } };
+      if (!botResponse.ok || !bot.ok || !bot.result?.id) {
+        return { verified: false, detail: "Telegram не подтвердил доступ бота.", target: null };
+      }
+      const chatResponse = await fetch(
+        `https://api.telegram.org/bot${credential}/getChat?${new URLSearchParams({ chat_id: target })}`,
+        { signal: AbortSignal.timeout(10_000) },
+      );
+      const chat = (await chatResponse.json()) as { ok?: boolean; result?: { id?: number } };
+      if (!chatResponse.ok || !chat.ok || !chat.result?.id) {
+        return { verified: false, detail: "Telegram не подтвердил указанную цель.", target: null };
+      }
+      const verifiedTarget = String(chat.result.id);
+      const membershipResponse = await fetch(
+        `https://api.telegram.org/bot${credential}/getChatMember?${new URLSearchParams({
+          chat_id: verifiedTarget,
+          user_id: String(bot.result.id),
+        })}`,
+        { signal: AbortSignal.timeout(10_000) },
+      );
+      const membership = (await membershipResponse.json()) as {
+        ok?: boolean;
+        result?: { status?: string; can_post_messages?: boolean };
+      };
+      const canPublish = membership.result?.status === "creator"
+        || (membership.result?.status === "administrator" && membership.result.can_post_messages !== false);
+      return canPublish
+        ? { verified: true, detail: "Telegram подтвердил права бота на эту цель.", target: verifiedTarget }
+        : { verified: false, detail: "У бота нет прав администратора на указанную Telegram-цель.", target: null };
+    }
+
+    if (provider === "vk") {
+      if (!/^\d+$/.test(target.replace(/^-/, ""))) {
+        return { verified: false, detail: "Для VK укажите числовой ID сообщества.", target: null };
+      }
+      const response = await fetch("https://api.vk.com/method/groups.getCallbackSettings", {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          access_token: credential,
+          group_id: target.replace(/^-/, ""),
+          v: "5.199",
+        }),
+        signal: AbortSignal.timeout(10_000),
+      });
+      const payload = (await response.json()) as { response?: unknown; error?: unknown };
+      const verifiedTarget = target.replace(/^-/, "");
+      return response.ok && !payload.error && payload.response
+        ? { verified: true, detail: "VK подтвердил права токена для указанного сообщества.", target: verifiedTarget }
+        : { verified: false, detail: "VK не подтвердил доступ к указанному сообществу.", target: null };
+    }
+
+    return { verified: false, detail: "Подключение Instagram пока недоступно.", target: null };
+  } catch {
+    return { verified: false, detail: "Не удалось проверить канал. Повторите попытку позже.", target: null };
+  }
+}
 
 export const planCatalog = {
   free: {
@@ -475,6 +614,189 @@ export async function getContent(workspaceId: string) {
     .orderBy(desc(contentItemsTable.createdAt));
 }
 
+function toConnectionStatus(connection: typeof channelConnectionsTable.$inferSelect) {
+  const provider = connection.provider as ChannelProvider;
+  const credentialAvailable = Boolean(decryptCredential(connection.credentialCiphertext));
+  const status = credentialAvailable && connection.status === "connected" ? "connected" : "needs_setup";
+  return {
+    id: connection.id,
+    provider: channelDefinitions[provider].provider,
+    category: "channel" as const,
+    status,
+    detail: connectionDetail(provider, connection.target, status, connection.lastCheckedAt, connection.lastError),
+    channel: provider,
+    target: connection.target,
+    lastCheckedAt: connection.lastCheckedAt,
+    canDisconnect: true,
+  };
+}
+
+export async function getConnections(workspaceId: string) {
+  const saved = await db
+    .select()
+    .from(channelConnectionsTable)
+    .where(and(eq(channelConnectionsTable.workspaceId, workspaceId), eq(channelConnectionsTable.isActive, true)))
+    .orderBy(desc(channelConnectionsTable.createdAt));
+  const savedByProvider = new Map(saved.map((connection) => [connection.provider, connection]));
+  const channels = (Object.keys(channelDefinitions) as ChannelProvider[]).map((provider) => {
+    const connection = savedByProvider.get(provider);
+    if (connection) return toConnectionStatus(connection);
+    return {
+      id: `available-${provider}`,
+      provider: channelDefinitions[provider].provider,
+      category: "channel" as const,
+      status: "needs_setup" as const,
+      detail: `Не подключён. Укажите ${channelDefinitions[provider].targetHint} и подтвердите доступ канала.`,
+      channel: provider,
+      target: null,
+      lastCheckedAt: null,
+      canDisconnect: false,
+    };
+  });
+
+  return [
+    { id: "youtube", provider: "YouTube / yt-dlp", category: "source", status: "configured", detail: "Локальный сборщик подготовлен." },
+    { id: "search", provider: "Google + Brave", category: "source", status: "needs_setup", detail: "Добавьте ключи поисковых провайдеров для живой выдачи." },
+    ...channels,
+    { id: "payments", provider: "ЮKassa / CloudPayments", category: "payment", status: "needs_setup", detail: "Подключите платёжного провайдера перед отправкой ссылок." },
+    { id: "memory", provider: "PostgreSQL memory", category: "memory", status: "connected", detail: "Журнал, инсайты и память хранятся в Replit Postgres." },
+    { id: "ai", provider: "Replit AI / OpenAI", category: "ai", status: "connected", detail: "LLM включена для суммаризации и контента." },
+  ];
+}
+
+export async function createChannelConnection(
+  workspaceId: string,
+  provider: ChannelProvider,
+  target: string,
+  credential: string,
+) {
+  const [connection] = await db
+    .insert(channelConnectionsTable)
+    .values({
+      id: id("connection"),
+      workspaceId,
+      provider,
+      target,
+      credentialCiphertext: encryptCredential(credential),
+      isActive: true,
+      status: "connected",
+      lastCheckedAt: now(),
+      lastError: null,
+    })
+    .onConflictDoUpdate({
+      target: [channelConnectionsTable.workspaceId, channelConnectionsTable.provider],
+      targetWhere: sql`is_active = true`,
+      set: {
+        target,
+        credentialCiphertext: encryptCredential(credential),
+        status: "connected",
+        lastCheckedAt: now(),
+        lastError: null,
+      },
+    })
+    .returning();
+  await addActivity(workspaceId, "Продавец", "Подключил канал", `${channelDefinitions[provider].provider}: ${target}`, "success");
+  return connection;
+}
+
+export async function checkChannelConnection(workspaceId: string, idValue: string) {
+  const [connection] = await db
+    .select()
+    .from(channelConnectionsTable)
+    .where(and(
+      eq(channelConnectionsTable.workspaceId, workspaceId),
+      eq(channelConnectionsTable.id, idValue),
+      eq(channelConnectionsTable.isActive, true),
+    ));
+  if (!connection) return null;
+
+  const credential = decryptCredential(connection.credentialCiphertext);
+  const verification = credential && isSupportedChannel(connection.provider)
+    ? await verifyChannelTarget(connection.provider, connection.target, credential)
+    : { verified: false, detail: "Ключ доступа не удалось расшифровать. Подключите канал заново.", target: null };
+  const [updated] = await db
+    .update(channelConnectionsTable)
+    .set({
+      target: verification.target ?? connection.target,
+      status: verification.verified ? "connected" : "needs_setup",
+      lastCheckedAt: now(),
+      lastError: verification.verified ? null : verification.detail,
+    })
+    .where(and(eq(channelConnectionsTable.workspaceId, workspaceId), eq(channelConnectionsTable.id, idValue)))
+    .returning();
+  return updated;
+}
+
+export async function disconnectChannelConnection(workspaceId: string, idValue: string) {
+  const [connection] = await db
+    .update(channelConnectionsTable)
+    .set({ credentialCiphertext: null, isActive: false, status: "needs_setup", lastError: null })
+    .where(and(
+      eq(channelConnectionsTable.workspaceId, workspaceId),
+      eq(channelConnectionsTable.id, idValue),
+      eq(channelConnectionsTable.isActive, true),
+    ))
+    .returning();
+  if (connection) {
+    await addActivity(workspaceId, "Продавец", "Отключил канал", `${channelDefinitions[connection.provider as ChannelProvider]?.provider ?? "Канал"}: ${connection.target}`, "warning");
+  }
+  return connection ?? null;
+}
+
+async function deliverToChannel(
+  provider: ChannelProvider,
+  target: string,
+  body: string,
+  credential: string,
+): Promise<{ status: "published" | "failed"; detail: string; externalId: string | null }> {
+  try {
+    if (provider === "telegram") {
+      const response = await fetch(`https://api.telegram.org/bot${credential}/sendMessage`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ chat_id: target, text: body }),
+        signal: AbortSignal.timeout(10_000),
+      });
+      const payload = (await response.json()) as { ok?: boolean; result?: { message_id?: number } };
+      if (!response.ok || !payload.ok) {
+        return { status: "failed", detail: "Telegram отклонил публикацию. Проверьте права бота и цель канала.", externalId: null };
+      }
+      return {
+        status: "published",
+        detail: "Публикация подтверждена Telegram.",
+        externalId: payload.result?.message_id ? String(payload.result.message_id) : null,
+      };
+    }
+
+    if (provider === "vk") {
+      const response = await fetch("https://api.vk.com/method/wall.post", {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          access_token: credential,
+          owner_id: target.startsWith("-") ? target : `-${target}`,
+          message: body,
+          v: "5.199",
+        }),
+        signal: AbortSignal.timeout(10_000),
+      });
+      const payload = (await response.json()) as { response?: { post_id?: number }; error?: unknown };
+      if (!response.ok || payload.error || !payload.response) {
+        return { status: "failed", detail: "VK отклонил публикацию. Проверьте права сообщества и цель канала.", externalId: null };
+      }
+      return {
+        status: "published",
+        detail: "Публикация подтверждена VK.",
+        externalId: payload.response.post_id ? String(payload.response.post_id) : null,
+      };
+    }
+
+    return { status: "failed", detail: "Публикация в Instagram пока недоступна для этого подключения.", externalId: null };
+  } catch {
+    return { status: "failed", detail: "Канал временно недоступен. Результат сохранён, повторите попытку позже.", externalId: null };
+  }
+}
+
 export async function createContent(
   workspaceId: string,
   planId: string,
@@ -503,18 +825,119 @@ export async function createContent(
 }
 
 export async function publishContent(workspaceId: string, idValue: string, channels: string[]) {
-  const [existing] = await db
-    .select()
+  const [candidate] = await db
+    .select({ id: contentItemsTable.id, status: contentItemsTable.status, channels: contentItemsTable.channels })
     .from(contentItemsTable)
     .where(and(eq(contentItemsTable.workspaceId, workspaceId), eq(contentItemsTable.id, idValue)));
-  if (!existing) return null;
+  if (!candidate) return null;
+  if (candidate.status !== "draft") return { error: "only_drafts", channels: [] as string[] };
+  if (new Set(channels).size !== channels.length) {
+    return { error: "duplicate_channels", channels: [] as string[] };
+  }
+  const invalidChannels = channels.filter((channel) => !candidate.channels.includes(channel));
+  if (invalidChannels.length > 0) {
+    return { error: "channel_not_selected", channels: invalidChannels };
+  }
+
+  const [existing] = await db
+    .update(contentItemsTable)
+    .set({ status: "publishing" })
+    .where(
+      and(
+        eq(contentItemsTable.workspaceId, workspaceId),
+        eq(contentItemsTable.id, idValue),
+        eq(contentItemsTable.status, "draft"),
+      ),
+    )
+    .returning();
+  if (!existing) {
+    const [matching] = await db
+      .select({ id: contentItemsTable.id })
+      .from(contentItemsTable)
+      .where(and(eq(contentItemsTable.workspaceId, workspaceId), eq(contentItemsTable.id, idValue)));
+    return matching ? { error: "only_drafts", channels: [] as string[] } : null;
+  }
+
+  const connections = await db
+    .select()
+    .from(channelConnectionsTable)
+    .where(and(eq(channelConnectionsTable.workspaceId, workspaceId), eq(channelConnectionsTable.isActive, true)));
+  const connectedByProvider = new Map(
+    connections
+      .map((connection) => ({
+        connection,
+        credential: decryptCredential(connection.credentialCiphertext),
+      }))
+      .filter(({ connection, credential }) => (
+        connection.status === "connected"
+        && isSupportedChannel(connection.provider)
+        && credential !== null
+      ))
+      .map(({ connection, credential }) => [connection.provider, { connection, credential }]),
+  );
+  const missingChannels = channels.filter((channel) => !connectedByProvider.has(channel));
+  if (missingChannels.length > 0) {
+    await db
+      .update(contentItemsTable)
+      .set({ status: "draft" })
+      .where(and(eq(contentItemsTable.workspaceId, workspaceId), eq(contentItemsTable.id, idValue)));
+    await addActivity(
+      workspaceId,
+      "Продавец",
+      "Публикация остановлена",
+      `Каналы не подключены: ${missingChannels.join(", ")}.`,
+      "failed",
+    );
+    return { error: "not_connected", channels: missingChannels };
+  }
+
+  const results = await Promise.all(
+    channels.map(async (provider) => {
+      const delivery = connectedByProvider.get(provider)!;
+      const connection = delivery.connection;
+      const deliveryId = id("delivery");
+      await db.insert(publishDeliveriesTable).values({
+        id: deliveryId,
+        workspaceId,
+        contentId: existing.id,
+        connectionId: connection.id,
+        provider,
+        target: connection.target,
+        status: "pending",
+        detail: "Подготовлено к отправке в канал.",
+        externalId: null,
+        createdAt: now(),
+      });
+      await addActivity(workspaceId, "Продавец", "Публикация подготовлена", `${provider}: ожидается ответ канала.`, "running");
+      const result = await deliverToChannel(provider as ChannelProvider, connection.target, existing.body, delivery.credential!);
+      await db
+        .update(publishDeliveriesTable)
+        .set({ status: result.status, detail: result.detail, externalId: result.externalId })
+        .where(eq(publishDeliveriesTable.id, deliveryId));
+      await addActivity(
+        workspaceId,
+        "Продавец",
+        result.status === "published" ? "Канал опубликован" : "Ошибка публикации",
+        `${provider}: ${result.detail}`,
+        result.status === "published" ? "success" : "failed",
+      );
+      return {
+        channel: provider,
+        target: connection.target,
+        status: result.status,
+        detail: result.detail,
+        externalId: result.externalId,
+      };
+    }),
+  );
+  const succeeded = results.filter((result) => result.status === "published").length;
+  const status = succeeded === results.length ? "published" : succeeded > 0 ? "partial" : "failed";
   const [item] = await db
     .update(contentItemsTable)
-    .set({ channels, status: "published" })
+    .set({ channels, status })
     .where(and(eq(contentItemsTable.workspaceId, workspaceId), eq(contentItemsTable.id, idValue)))
     .returning();
-  await addActivity(workspaceId, "Продавец", "Поставил публикацию", `${item.title} → ${channels.join(", ")}`, "warning");
-  return item;
+  return { item, deliveries: results };
 }
 
 export async function getBuilderJobs(workspaceId: string) {

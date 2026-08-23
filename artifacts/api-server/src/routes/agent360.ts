@@ -6,6 +6,12 @@ import {
   CreateBillingPortalResponse,
   CreateBuilderJobBody,
   CreateBuilderJobResponse,
+  CheckChannelConnectionParams,
+  CheckChannelConnectionResponse,
+  ConnectChannelBody,
+  ConnectChannelResponse,
+  DisconnectChannelParams,
+  DisconnectChannelResponse,
   GenerateContentBody,
   GenerateContentResponse,
   GetActivitiesResponse,
@@ -36,6 +42,7 @@ import {
   addAnalysisInsights,
   completeRun,
   createBuilderJob,
+  createChannelConnection,
   createContent,
   createRun,
   ensureWorkspace,
@@ -43,16 +50,21 @@ import {
   getActivities,
   getBuilderJob,
   getBuilderJobs,
+  getConnections,
   getContent,
   getInsights,
   getRun,
   getRuns,
+  checkChannelConnection,
+  disconnectChannelConnection,
+  isSupportedChannel,
   publishContent,
   planCatalog,
   persistStripeCheckoutSession,
   releaseStripeCheckout,
   reserveStripeCheckout,
   updateBuilderJob,
+  verifyChannelTarget,
 } from "../lib/agent360-store";
 import {
   createBillingPortal,
@@ -269,13 +281,14 @@ router.get("/dashboard/summary", async (req, res): Promise<void> => {
     getInsights(workspace.id),
     getContent(workspace.id),
   ]);
+  const connections = await getConnections(workspace.id);
   res.json(
     GetDashboardSummaryResponse.parse({
       activeRuns: runs.filter((run) => run.status === "running").length,
       insights: insights.length,
       drafts: content.filter((item) => item.status === "draft").length,
       published: content.filter((item) => item.status === "published").length,
-      connectedChannels: 0,
+      connectedChannels: connections.filter((connection) => connection.category === "channel" && connection.status === "connected").length,
       systemStatus: "operational",
     }),
   );
@@ -298,18 +311,87 @@ router.get("/agents", (_req, res): void => {
   );
 });
 
-router.get("/connections", (_req, res): void => {
-  res.json(
-    GetConnectionsResponse.parse([
-      { id: "youtube", provider: "YouTube / yt-dlp", category: "source", status: "configured", detail: "Локальный сборщик подготовлен." },
-      { id: "search", provider: "Google + Brave", category: "source", status: "needs_setup", detail: "Добавьте ключи поисковых провайдеров для живой выдачи." },
-      { id: "telegram", provider: "Telegram Bot API", category: "channel", status: "needs_setup", detail: "Доступен коннектор Telegram; требуется авторизация." },
-      { id: "vk", provider: "VK API", category: "channel", status: "needs_setup", detail: "Нужен токен сообщества в защищённых переменных." },
-      { id: "payments", provider: "ЮKassa / CloudPayments", category: "payment", status: "needs_setup", detail: "Подключите платёжного провайдера перед отправкой ссылок." },
-      { id: "memory", provider: "PostgreSQL memory", category: "memory", status: "connected", detail: "Журнал, инсайты и память хранятся в Replit Postgres." },
-      { id: "ai", provider: "Replit AI / OpenAI", category: "ai", status: "connected", detail: "LLM включена для суммаризации и контента." },
-    ]),
+router.get("/connections", async (req, res): Promise<void> => {
+  const workspace = await getWorkspace(req);
+  res.json(GetConnectionsResponse.parse(await getConnections(workspace.id)));
+});
+
+router.post("/connections", async (req, res): Promise<void> => {
+  const body = ConnectChannelBody.safeParse(req.body);
+  if (!body.success) {
+    res.status(400).json({ error: body.error.message });
+    return;
+  }
+  if (!isSupportedChannel(body.data.provider)) {
+    res.status(400).json({ error: "This channel is not allowed." });
+    return;
+  }
+  const workspace = await getWorkspace(req);
+  const verification = await verifyChannelTarget(body.data.provider, body.data.target.trim(), body.data.credential);
+  if (!verification.verified) {
+    res.status(400).json({ error: verification.detail });
+    return;
+  }
+  const connection = await createChannelConnection(
+    workspace.id,
+    body.data.provider,
+    verification.target ?? body.data.target.trim(),
+    body.data.credential,
   );
+  res.status(201).json(ConnectChannelResponse.parse({
+    id: connection.id,
+    provider: body.data.provider === "telegram" ? "Telegram Bot API" : body.data.provider === "vk" ? "VK API" : "Instagram Graph API",
+    category: "channel",
+    status: "connected",
+    detail: `Канал подключён: ${connection.target}.`,
+    channel: body.data.provider,
+    target: connection.target,
+    lastCheckedAt: connection.lastCheckedAt,
+    canDisconnect: true,
+  }));
+});
+
+router.post("/connections/:id/check", async (req, res): Promise<void> => {
+  const params = CheckChannelConnectionParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+  const workspace = await getWorkspace(req);
+  const connection = await checkChannelConnection(workspace.id, params.data.id);
+  if (!connection || !isSupportedChannel(connection.provider)) {
+    res.status(404).json({ error: "Channel connection not found" });
+    return;
+  }
+  const status = connection.status === "connected" ? "connected" : "needs_setup";
+  res.json(CheckChannelConnectionResponse.parse({
+    id: connection.id,
+    provider: connection.provider === "telegram" ? "Telegram Bot API" : connection.provider === "vk" ? "VK API" : "Instagram Graph API",
+    category: "channel",
+    status,
+    detail: status === "connected"
+      ? `Канал подключён: ${connection.target}. Проверка завершена.`
+      : connection.lastError ?? "Канал не прошёл проверку. Повторите попытку позже.",
+    channel: connection.provider,
+    target: connection.target,
+    lastCheckedAt: connection.lastCheckedAt,
+    canDisconnect: true,
+  }));
+});
+
+router.delete("/connections/:id", async (req, res): Promise<void> => {
+  const params = DisconnectChannelParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+  const workspace = await getWorkspace(req);
+  const connection = await disconnectChannelConnection(workspace.id, params.data.id);
+  if (!connection) {
+    res.status(404).json({ error: "Channel connection not found" });
+    return;
+  }
+  res.json(DisconnectChannelResponse.parse({ success: true }));
 });
 
 router.get("/runs", async (req, res): Promise<void> => {
@@ -418,13 +500,30 @@ router.post("/content/:id/publish", async (req, res): Promise<void> => {
     res.status(400).json({ error });
     return;
   }
+  if (!body.data.confirmed) {
+    res.status(400).json({ error: "Publication must be explicitly confirmed." });
+    return;
+  }
   const workspace = await getWorkspace(req);
-  const content = await publishContent(workspace.id, params.data.id, body.data.channels);
-  if (!content) {
+  const result = await publishContent(workspace.id, params.data.id, body.data.channels);
+  if (!result) {
     res.status(404).json({ error: "Content not found" });
     return;
   }
-  res.json(PublishContentResponse.parse(content));
+  if ("error" in result) {
+    if (result.error === "only_drafts") {
+      res.status(409).json({ error: "Only draft content can be published." });
+      return;
+    }
+    if (result.error === "duplicate_channels" || result.error === "channel_not_selected") {
+      res.status(400).json({ error: "Selected channels must be unique and included in the content draft." });
+      return;
+    }
+    const missingChannels = result.channels ?? [];
+    res.status(409).json({ error: `Connect selected channels before publishing: ${missingChannels.join(", ")}` });
+    return;
+  }
+  res.json(PublishContentResponse.parse({ ...result.item, deliveries: result.deliveries }));
 });
 
 router.get("/builder/jobs", async (req, res): Promise<void> => {

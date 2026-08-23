@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { ConnectionStatusCategory } from './connectionStatusCategory';
+import type { ConnectionStatusChannel } from './connectionStatusChannel';
 import type { ConnectionStatusStatus } from './connectionStatusStatus';
 
 export interface ConnectionStatus {
@@ -14,4 +15,10 @@ export interface ConnectionStatus {
   category: ConnectionStatusCategory;
   status: ConnectionStatusStatus;
   detail: string;
+  channel?: ConnectionStatusChannel;
+  /** @nullable */
+  target?: string | null;
+  /** @nullable */
+  lastCheckedAt?: Date | null;
+  canDisconnect?: boolean;
 }
