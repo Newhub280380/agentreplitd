@@ -1,4 +1,5 @@
 import type Stripe from "stripe";
+import { pool } from "@workspace/db";
 import {
   applyStripeSubscriptionState,
   getWorkspaceByStripeCustomerId,
@@ -43,48 +44,82 @@ function invoiceSubscription(invoice: Stripe.Invoice): string | Stripe.Subscript
   return invoice.parent.subscription_details?.subscription ?? null;
 }
 
-async function getOrCreatePrice(planId: PaidPlanId): Promise<string> {
-  const stripe = await getUncachableStripeClient();
-  const definition = priceDefinitions[planId];
-  const products = await stripe.products.list({ active: true, limit: 100 });
-  let product = products.data.find((item) => item.metadata.agent360_plan === planId);
+async function withStripeCatalogLock<T>(planId: PaidPlanId, operation: () => Promise<T>): Promise<T> {
+  const client = await pool.connect();
+  const lockKey = `agent360-stripe-catalog-${planId}`;
+  try {
+    await client.query("SELECT pg_advisory_lock(hashtextextended($1, 0))", [lockKey]);
+    return await operation();
+  } finally {
+    try {
+      await client.query("SELECT pg_advisory_unlock(hashtextextended($1, 0))", [lockKey]);
+    } finally {
+      client.release();
+    }
+  }
+}
 
-  if (!product) {
-    product = await stripe.products.create(
+export async function getOrCreatePrice(planId: PaidPlanId, stripeClient?: Stripe): Promise<string> {
+  return withStripeCatalogLock(planId, async () => {
+    const stripe = stripeClient ?? await getUncachableStripeClient();
+    const definition = priceDefinitions[planId];
+    const products = await stripe.products.list({ active: true, limit: 100 });
+    const matchingProducts = products.data
+      .filter((item) => item.metadata.agent360_plan === planId)
+      .sort((left, right) => (left.created - right.created) || left.id.localeCompare(right.id));
+    let product = matchingProducts[0];
+
+    if (!product) {
+      product = await stripe.products.create(
+        {
+          name: definition.productName,
+          description: definition.description,
+          metadata: { agent360_plan: planId },
+        },
+        { idempotencyKey: `agent360-product-${planId}-v1` },
+      );
+    } else if (matchingProducts.length > 1) {
+      await Promise.all(
+        matchingProducts.slice(1).map((duplicate) => stripe.products.update(duplicate.id, { active: false })),
+      );
+    }
+
+    const prices = await stripe.prices.list({
+      product: product.id,
+      active: true,
+      type: "recurring",
+      limit: 100,
+    });
+    const matchingPrices = prices.data
+      .filter(
+        (price) =>
+          price.currency === "usd" &&
+          price.unit_amount === definition.amount &&
+          price.recurring?.interval === "month",
+      )
+      .sort((left, right) => (left.created - right.created) || left.id.localeCompare(right.id));
+    const existing = matchingPrices[0];
+    if (existing) {
+      if (matchingPrices.length > 1) {
+        await Promise.all(
+          matchingPrices.slice(1).map((duplicate) => stripe.prices.update(duplicate.id, { active: false })),
+        );
+      }
+      return existing.id;
+    }
+
+    const price = await stripe.prices.create(
       {
-        name: definition.productName,
-        description: definition.description,
+        product: product.id,
+        unit_amount: definition.amount,
+        currency: "usd",
+        recurring: { interval: "month" },
         metadata: { agent360_plan: planId },
       },
-      { idempotencyKey: `agent360-product-${planId}-v1` },
+      { idempotencyKey: `agent360-price-${planId}-usd-monthly-v1` },
     );
-  }
-
-  const prices = await stripe.prices.list({
-    product: product.id,
-    active: true,
-    type: "recurring",
-    limit: 100,
+    return price.id;
   });
-  const existing = prices.data.find(
-    (price) =>
-      price.currency === "usd" &&
-      price.unit_amount === definition.amount &&
-      price.recurring?.interval === "month",
-  );
-  if (existing) return existing.id;
-
-  const price = await stripe.prices.create(
-    {
-      product: product.id,
-      unit_amount: definition.amount,
-      currency: "usd",
-      recurring: { interval: "month" },
-      metadata: { agent360_plan: planId },
-    },
-    { idempotencyKey: `agent360-price-${planId}-usd-monthly-v1` },
-  );
-  return price.id;
 }
 
 async function getOrCreateCustomer(workspace: {
