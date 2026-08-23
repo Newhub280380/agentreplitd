@@ -8,6 +8,7 @@
 - `python -m uvicorn main:app --host 0.0.0.0 --port 8000 --app-dir services/agent-engine` — run the FastAPI/LangGraph runtime
 - `pnpm --filter @workspace/agent-multitool-360 run dev` — run the React command center
 - `pnpm run typecheck` — full typecheck across all packages
+- `pnpm --filter @workspace/scripts run security-test` — run authentication, workspace-isolation, and quota regression checks
 - `pnpm run build` — typecheck + build all packages
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
 - `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
