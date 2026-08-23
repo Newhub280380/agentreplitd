@@ -62,6 +62,13 @@ export const GetAccountOverviewResponse = zod.object({
   "builderJobs": zod.number()
 })
 }),
+  "subscription": zod.object({
+  "provider": zod.enum(['stripe']),
+  "status": zod.enum(['inactive', 'incomplete', 'incomplete_expired', 'trialing', 'active', 'past_due', 'canceled', 'unpaid', 'paused']),
+  "currentPeriodEnd": zod.coerce.date().nullable(),
+  "cancelAtPeriodEnd": zod.boolean(),
+  "manageAvailable": zod.boolean()
+}),
   "plans": zod.array(zod.object({
   "id": zod.enum(['free', 'starter', 'pro']),
   "name": zod.string(),
@@ -91,6 +98,26 @@ export const GetPlansResponseItem = zod.object({
 })
 })
 export const GetPlansResponse = zod.array(GetPlansResponseItem)
+
+
+/**
+ * @summary Create a hosted Stripe checkout session for a paid workspace plan
+ */
+export const CreateBillingCheckoutBody = zod.object({
+  "plan": zod.enum(['starter', 'pro'])
+})
+
+export const CreateBillingCheckoutResponse = zod.object({
+  "url": zod.string()
+})
+
+
+/**
+ * @summary Create a hosted Stripe billing portal session
+ */
+export const CreateBillingPortalResponse = zod.object({
+  "url": zod.string()
+})
 
 
 /**

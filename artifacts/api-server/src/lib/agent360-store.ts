@@ -1,4 +1,4 @@
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, isNull, lt, or, sql } from "drizzle-orm";
 import {
   activitiesTable,
   agentMemoriesTable,
@@ -7,6 +7,7 @@ import {
   contentItemsTable,
   db,
   insightsTable,
+  stripeEventsTable,
   workspaceUsageTable,
   workspacesTable,
 } from "@workspace/db";
@@ -25,14 +26,14 @@ export const planCatalog = {
   starter: {
     id: "starter",
     name: "Старт",
-    priceLabel: "Скоро",
+    priceLabel: "$9 / месяц",
     description: "Для регулярной работы одного эксперта.",
     limits: { runs: 100, content: 250, builderJobs: 30 },
   },
   pro: {
     id: "pro",
     name: "Профессиональный",
-    priceLabel: "Скоро",
+    priceLabel: "$29 / месяц",
     description: "Для интенсивных исследований и контент-пайплайна.",
     limits: { runs: 500, content: 1000, builderJobs: 120 },
   },
@@ -40,6 +41,7 @@ export const planCatalog = {
 
 export type PlanId = keyof typeof planCatalog;
 type UsageResource = keyof (typeof planCatalog)["free"]["limits"];
+const billableSubscriptionStatuses = new Set(["active", "trialing"]);
 
 function monthStart(): Date {
   const date = now();
@@ -99,8 +101,146 @@ export async function getAccountOverview(userId: string) {
       builderJobs: usage?.builderJobs ?? 0,
       limits: plan.limits,
     },
+    subscription: {
+      provider: "stripe",
+      status: workspace.subscriptionStatus,
+      currentPeriodEnd: workspace.subscriptionCurrentPeriodEnd?.toISOString() ?? null,
+      cancelAtPeriodEnd: workspace.cancelAtPeriodEnd,
+      manageAvailable: Boolean(workspace.stripeCustomerId),
+    },
     plans: Object.values(planCatalog),
   };
+}
+
+export async function persistStripeCustomer(workspaceId: string, stripeCustomerId: string): Promise<void> {
+  await db
+    .update(workspacesTable)
+    .set({ stripeCustomerId })
+    .where(eq(workspacesTable.id, workspaceId));
+}
+
+export async function getWorkspaceByStripeCustomerId(stripeCustomerId: string) {
+  const [workspace] = await db
+    .select()
+    .from(workspacesTable)
+    .where(eq(workspacesTable.stripeCustomerId, stripeCustomerId));
+  return workspace ?? null;
+}
+
+export async function reserveStripeCheckout(workspaceId: string, planId: string): Promise<Date | null> {
+  const currentTime = now();
+  const expiresAt = new Date(currentTime.getTime() + 31 * 60 * 1_000);
+  const reserved = await db
+    .update(workspacesTable)
+    .set({
+      pendingPlan: planId,
+      checkoutExpiresAt: expiresAt,
+      stripeCheckoutSessionId: null,
+    })
+    .where(
+      and(
+        eq(workspacesTable.id, workspaceId),
+        or(isNull(workspacesTable.checkoutExpiresAt), lt(workspacesTable.checkoutExpiresAt, currentTime)),
+      ),
+    )
+    .returning({ id: workspacesTable.id });
+  return reserved.length === 1 ? expiresAt : null;
+}
+
+export async function persistStripeCheckoutSession(workspaceId: string, sessionId: string): Promise<void> {
+  await db
+    .update(workspacesTable)
+    .set({ stripeCheckoutSessionId: sessionId })
+    .where(eq(workspacesTable.id, workspaceId));
+}
+
+export async function releaseStripeCheckout(workspaceId: string): Promise<void> {
+  await db
+    .update(workspacesTable)
+    .set({ pendingPlan: null, checkoutExpiresAt: null, stripeCheckoutSessionId: null })
+    .where(eq(workspacesTable.id, workspaceId));
+}
+
+export async function applyStripeSubscriptionState({
+  eventId,
+  eventCreatedAt,
+  workspaceId,
+  stripeCustomerId,
+  stripeSubscriptionId,
+  status,
+  currentPeriodEnd,
+  cancelAtPeriodEnd,
+  planId,
+}: {
+  eventId: string;
+  eventCreatedAt: Date;
+  workspaceId: string;
+  stripeCustomerId: string;
+  stripeSubscriptionId: string;
+  status: string;
+  currentPeriodEnd: Date | null;
+  cancelAtPeriodEnd: boolean;
+  planId: string;
+}): Promise<"applied" | "duplicate" | "stale" | "conflict"> {
+  const isPaidPlan = planId in planCatalog && planId !== "free";
+  const plan = isPaidPlan && billableSubscriptionStatuses.has(status) ? planId : "free";
+
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT id FROM ${workspacesTable} WHERE id = ${workspaceId} FOR UPDATE`);
+
+    const inserted = await tx
+      .insert(stripeEventsTable)
+      .values({ id: eventId, workspaceId, createdAt: eventCreatedAt })
+      .onConflictDoNothing()
+      .returning({ id: stripeEventsTable.id });
+    if (inserted.length === 0) return "duplicate";
+
+    const [current] = await tx
+      .select({
+        stripeSubscriptionId: workspacesTable.stripeSubscriptionId,
+        subscriptionStatus: workspacesTable.subscriptionStatus,
+        lastStripeEventCreatedAt: workspacesTable.lastStripeEventCreatedAt,
+        lastStripeEventId: workspacesTable.lastStripeEventId,
+      })
+      .from(workspacesTable)
+      .where(eq(workspacesTable.id, workspaceId));
+    if (
+      !current ||
+      (current.lastStripeEventCreatedAt &&
+        (current.lastStripeEventCreatedAt > eventCreatedAt ||
+          (current.lastStripeEventCreatedAt.getTime() === eventCreatedAt.getTime() &&
+              (current.lastStripeEventId ?? "") >= eventId)))
+    ) {
+      return "stale";
+    }
+
+    const currentSubscriptionIsBillable = billableSubscriptionStatuses.has(current.subscriptionStatus);
+    if (
+      current.stripeSubscriptionId &&
+      current.stripeSubscriptionId !== stripeSubscriptionId &&
+      currentSubscriptionIsBillable
+    ) {
+      return "conflict";
+    }
+
+    await tx
+      .update(workspacesTable)
+      .set({
+        plan,
+        stripeCustomerId,
+        stripeSubscriptionId,
+        subscriptionStatus: status,
+        subscriptionCurrentPeriodEnd: currentPeriodEnd,
+        cancelAtPeriodEnd,
+        pendingPlan: null,
+        checkoutExpiresAt: null,
+        stripeCheckoutSessionId: null,
+        lastStripeEventCreatedAt: eventCreatedAt,
+        lastStripeEventId: eventId,
+      })
+      .where(eq(workspacesTable.id, workspaceId));
+    return "applied";
+  });
 }
 
 async function consumeQuota(workspaceId: string, planId: string, resource: UsageResource): Promise<boolean> {
