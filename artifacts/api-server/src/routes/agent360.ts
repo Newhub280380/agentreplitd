@@ -1,6 +1,9 @@
 import { Router, type IRouter, type NextFunction, type Request, type Response } from "express";
 import { getAuth } from "@clerk/express";
 import {
+  CreateBillingCheckoutBody,
+  CreateBillingCheckoutResponse,
+  CreateBillingPortalResponse,
   CreateBuilderJobBody,
   CreateBuilderJobResponse,
   GenerateContentBody,
@@ -46,8 +49,16 @@ import {
   getRuns,
   publishContent,
   planCatalog,
+  persistStripeCheckoutSession,
+  releaseStripeCheckout,
+  reserveStripeCheckout,
   updateBuilderJob,
 } from "../lib/agent360-store";
+import {
+  createBillingPortal,
+  createCheckoutForWorkspace,
+  isPaidPlanId,
+} from "../lib/stripeService";
 
 const router: IRouter = Router();
 const builderLogPath = path.resolve(process.cwd(), "agent360-builder.log");
@@ -67,6 +78,12 @@ function requireAuth(req: Request, res: Response, next: NextFunction): void {
 
 function getWorkspace(req: Request) {
   return ensureWorkspace((req as AuthenticatedRequest).userId);
+}
+
+function getPublicAppUrl(req: Request): string {
+  const configuredDomain = process.env.REPLIT_DOMAINS?.split(",")[0];
+  if (configuredDomain) return `https://${configuredDomain}`;
+  throw new Error("A canonical application domain is required for billing redirects.");
 }
 
 const toRun = (run: Awaited<ReturnType<typeof getRun>>) =>
@@ -180,6 +197,69 @@ router.use(requireAuth);
 router.get("/account", async (req, res): Promise<void> => {
   const account = await getAccountOverview((req as AuthenticatedRequest).userId);
   res.json(GetAccountOverviewResponse.parse(account));
+});
+
+router.post("/billing/checkout", async (req, res): Promise<void> => {
+  const body = CreateBillingCheckoutBody.safeParse(req.body);
+  if (!body.success || !isPaidPlanId(body.data.plan)) {
+    res.status(400).json({ error: "Choose an available paid plan." });
+    return;
+  }
+
+  const workspace = await getWorkspace(req);
+  if (
+    workspace.plan === body.data.plan &&
+    (workspace.subscriptionStatus === "active" || workspace.subscriptionStatus === "trialing")
+  ) {
+    res.status(409).json({ error: "This workspace already has the selected plan." });
+    return;
+  }
+  if (
+    workspace.stripeSubscriptionId &&
+    !["canceled", "incomplete_expired", "unpaid"].includes(workspace.subscriptionStatus)
+  ) {
+    res.status(409).json({ error: "Manage the existing subscription in the billing portal before changing plans." });
+    return;
+  }
+
+  const checkoutExpiresAt = await reserveStripeCheckout(workspace.id, body.data.plan);
+  if (!checkoutExpiresAt) {
+    res.status(409).json({ error: "A payment session is already being prepared for this workspace." });
+    return;
+  }
+
+  try {
+    const appUrl = getPublicAppUrl(req);
+    const checkout = await createCheckoutForWorkspace({
+      workspace,
+      planId: body.data.plan,
+      successUrl: `${appUrl}/settings?billing=success`,
+      cancelUrl: `${appUrl}/settings?billing=cancelled`,
+      expiresAt: checkoutExpiresAt,
+    });
+    await persistStripeCheckoutSession(workspace.id, checkout.id);
+    res.json(CreateBillingCheckoutResponse.parse({ url: checkout.url }));
+  } catch (err) {
+    await releaseStripeCheckout(workspace.id);
+    req.log.error({ err }, "Unable to create Stripe checkout session");
+    res.status(502).json({ error: "Payment checkout is temporarily unavailable. Please try again." });
+  }
+});
+
+router.post("/billing/portal", async (req, res): Promise<void> => {
+  const workspace = await getWorkspace(req);
+  if (!workspace.stripeCustomerId) {
+    res.status(400).json({ error: "No Stripe billing profile exists for this workspace yet." });
+    return;
+  }
+
+  try {
+    const url = await createBillingPortal(workspace.stripeCustomerId, `${getPublicAppUrl(req)}/settings`);
+    res.json(CreateBillingPortalResponse.parse({ url }));
+  } catch (err) {
+    req.log.error({ err }, "Unable to create Stripe billing portal session");
+    res.status(502).json({ error: "Subscription management is temporarily unavailable. Please try again." });
+  }
 });
 
 router.get("/dashboard/summary", async (req, res): Promise<void> => {

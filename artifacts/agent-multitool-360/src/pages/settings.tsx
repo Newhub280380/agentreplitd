@@ -1,15 +1,48 @@
-import { useGetAccountOverview, useGetConnections, useHealthCheck } from "@workspace/api-client-react"
+import {
+  useCreateBillingCheckout,
+  useCreateBillingPortal,
+  useGetAccountOverview,
+  useGetConnections,
+  useHealthCheck,
+} from "@workspace/api-client-react"
 import { 
   Card, CardHeader, CardTitle, CardContent, Button,
   LoadingState, ErrorState, Badge,
   Table, TableHeader, TableRow, TableHead, TableBody, TableCell
 } from "@/components/ui"
 import { ShieldAlert, Network, ServerCrash, CreditCard, Gauge } from "lucide-react"
+import { useToast } from "@/hooks/use-toast"
 
 export default function SettingsPage() {
   const { data: connections, isLoading: isLoadingConnections, error: errorConnections } = useGetConnections();
   const { data: health, isLoading: isLoadingHealth } = useHealthCheck();
   const { data: account, isLoading: isLoadingAccount } = useGetAccountOverview();
+  const { toast } = useToast();
+  const checkout = useCreateBillingCheckout({
+    mutation: {
+      onSuccess: ({ url }) => window.location.assign(url),
+      onError: (error) => toast({
+        variant: "destructive",
+        title: "Не удалось открыть оплату",
+        description: error.message,
+      }),
+    },
+  });
+  const portal = useCreateBillingPortal({
+    mutation: {
+      onSuccess: ({ url }) => window.location.assign(url),
+      onError: (error) => toast({
+        variant: "destructive",
+        title: "Не удалось открыть управление подпиской",
+        description: error.message,
+      }),
+    },
+  });
+
+  const startCheckout = (planId: string) => {
+    if (planId !== "starter" && planId !== "pro") return;
+    checkout.mutate({ data: { plan: planId } });
+  };
 
   const getStatusColor = (status: string) => {
     switch(status) {
@@ -57,14 +90,26 @@ export default function SettingsPage() {
         <CardContent>
           {isLoadingAccount ? <LoadingState /> : account ? (
             <div className="space-y-5">
-              <div className="flex flex-col justify-between gap-4 border bg-zinc-50 p-4 sm:flex-row sm:items-center">
+                <div className="flex flex-col justify-between gap-4 border bg-zinc-50 p-4 sm:flex-row sm:items-center">
                 <div>
                   <p className="font-display text-lg font-bold uppercase tracking-wide">{account.workspace.name}</p>
                   <p className="mt-1 font-mono text-xs text-muted-foreground">
                     Тариф: <span className="font-bold text-primary">{account.plan.name}</span> · {account.plan.priceLabel}
                   </p>
+                    <p className="mt-2 font-mono text-xs text-muted-foreground">
+                      Подписка Stripe: <span className="font-bold text-zinc-900">{subscriptionStatusLabel(account.subscription.status)}</span>
+                      {account.subscription.cancelAtPeriodEnd ? " · отмена в конце периода" : ""}
+                    </p>
                 </div>
-                <Button disabled title="Оплата будет подключена отдельным этапом">Upgrade soon</Button>
+                  {account.subscription.manageAvailable && (
+                    <Button
+                      variant="outline"
+                      disabled={portal.isPending}
+                      onClick={() => portal.mutate()}
+                    >
+                      {portal.isPending ? "Открываем…" : "Управлять подпиской"}
+                    </Button>
+                  )}
               </div>
               <div>
                 <div className="mb-3 flex items-center gap-2 font-display text-xs font-bold uppercase tracking-wider text-muted-foreground">
@@ -76,9 +121,43 @@ export default function SettingsPage() {
                   <UsageMeter label="Builder jobs" used={account.usage.builderJobs} limit={account.usage.limits.builderJobs} />
                 </div>
               </div>
-              <p className="font-mono text-xs text-muted-foreground">
-                Для будущего перехода будут доступны тарифы «Старт» и «Профессиональный». Списания и платёжные данные пока не включены.
-              </p>
+              <div className="space-y-3">
+                <div className="font-display text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                  Выберите тариф
+                </div>
+                <div className="grid gap-3 md:grid-cols-2">
+                  {account.plans
+                    .filter((plan) => plan.id !== "free")
+                    .map((plan) => {
+                      const isCurrent = account.workspace.plan === plan.id && ["active", "trialing"].includes(account.subscription.status);
+                      return (
+                        <div key={plan.id} className="border bg-white p-4">
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <p className="font-display text-base font-bold uppercase tracking-wide">{plan.name}</p>
+                              <p className="mt-1 font-mono text-xs text-primary">{plan.priceLabel}</p>
+                            </div>
+                            {isCurrent && <Badge variant="success">текущий</Badge>}
+                          </div>
+                          <p className="mt-3 min-h-10 text-sm text-muted-foreground">{plan.description}</p>
+                          <p className="mt-3 font-mono text-xs text-muted-foreground">
+                            {plan.limits.runs} запусков · {plan.limits.content} материалов · {plan.limits.builderJobs} сборок
+                          </p>
+                          <Button
+                            className="mt-4 w-full"
+                            disabled={isCurrent || checkout.isPending}
+                            onClick={() => startCheckout(plan.id)}
+                          >
+                            {isCurrent ? "Текущий тариф" : checkout.isPending ? "Открываем оплату…" : `Выбрать «${plan.name}»`}
+                          </Button>
+                        </div>
+                      );
+                    })}
+                </div>
+                <p className="font-mono text-xs text-muted-foreground">
+                  Оплата проходит на защищённой странице Stripe. Лимиты изменятся только после подтверждения платежа.
+                </p>
+              </div>
             </div>
           ) : null}
         </CardContent>
@@ -140,6 +219,21 @@ export default function SettingsPage() {
 
     </div>
   )
+}
+
+function subscriptionStatusLabel(status: string) {
+  const labels: Record<string, string> = {
+    inactive: "не активна",
+    incomplete: "ожидает оплаты",
+    incomplete_expired: "не завершена",
+    trialing: "пробный период",
+    active: "активна",
+    past_due: "есть задолженность",
+    canceled: "отменена",
+    unpaid: "не оплачена",
+    paused: "приостановлена",
+  };
+  return labels[status] ?? status;
 }
 
 function UsageMeter({ label, used, limit }: { label: string; used: number; limit: number }) {

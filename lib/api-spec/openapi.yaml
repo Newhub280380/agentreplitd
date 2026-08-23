@@ -82,6 +82,70 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/Plan"
+  /billing/checkout:
+    post:
+      operationId: createBillingCheckout
+      tags: [account]
+      summary: Create a hosted Stripe checkout session for a paid workspace plan
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CheckoutInput"
+      responses:
+        "200":
+          description: Checkout session created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckoutSession"
+        "400":
+          description: Invalid plan or missing billing profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          description: Workspace already has the selected plan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Stripe is temporarily unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /billing/portal:
+    post:
+      operationId: createBillingPortal
+      tags: [account]
+      summary: Create a hosted Stripe billing portal session
+      responses:
+        "200":
+          description: Billing portal session created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BillingPortalSession"
+        "400":
+          description: No billing profile exists for this workspace
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "502":
+          description: Stripe is temporarily unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /activities:
     get:
       operationId: getActivities
@@ -420,7 +484,7 @@ components:
           $ref: "#/components/schemas/UsageLimits"
     AccountOverview:
       type: object
-      required: [workspace, plan, usage, plans]
+      required: [workspace, plan, usage, subscription, plans]
       properties:
         workspace:
           $ref: "#/components/schemas/Workspace"
@@ -428,10 +492,38 @@ components:
           $ref: "#/components/schemas/Plan"
         usage:
           $ref: "#/components/schemas/UsageSummary"
+        subscription:
+          $ref: "#/components/schemas/SubscriptionSummary"
         plans:
           type: array
           items:
             $ref: "#/components/schemas/Plan"
+    SubscriptionSummary:
+      type: object
+      required: [provider, status, currentPeriodEnd, cancelAtPeriodEnd, manageAvailable]
+      properties:
+        provider: { type: string, enum: [stripe] }
+        status:
+          type: string
+          enum: [inactive, incomplete, incomplete_expired, trialing, active, past_due, canceled, unpaid, paused]
+        currentPeriodEnd: { type: ["string", "null"], format: date-time }
+        cancelAtPeriodEnd: { type: boolean }
+        manageAvailable: { type: boolean }
+    CheckoutInput:
+      type: object
+      required: [plan]
+      properties:
+        plan: { type: string, enum: [starter, pro] }
+    CheckoutSession:
+      type: object
+      required: [url]
+      properties:
+        url: { type: string }
+    BillingPortalSession:
+      type: object
+      required: [url]
+      properties:
+        url: { type: string }
     DashboardSummary:
       type: object
       required: [activeRuns, insights, drafts, published, connectedChannels, systemStatus]

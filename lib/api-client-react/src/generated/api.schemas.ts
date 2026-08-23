@@ -60,11 +60,63 @@ export interface UsageSummary {
   limits: UsageLimits;
 }
 
+export type SubscriptionSummaryProvider = typeof SubscriptionSummaryProvider[keyof typeof SubscriptionSummaryProvider];
+
+
+export const SubscriptionSummaryProvider = {
+  stripe: 'stripe',
+} as const;
+
+export type SubscriptionSummaryStatus = typeof SubscriptionSummaryStatus[keyof typeof SubscriptionSummaryStatus];
+
+
+export const SubscriptionSummaryStatus = {
+  inactive: 'inactive',
+  incomplete: 'incomplete',
+  incomplete_expired: 'incomplete_expired',
+  trialing: 'trialing',
+  active: 'active',
+  past_due: 'past_due',
+  canceled: 'canceled',
+  unpaid: 'unpaid',
+  paused: 'paused',
+} as const;
+
+export interface SubscriptionSummary {
+  provider: SubscriptionSummaryProvider;
+  status: SubscriptionSummaryStatus;
+  /** @nullable */
+  currentPeriodEnd: string | null;
+  cancelAtPeriodEnd: boolean;
+  manageAvailable: boolean;
+}
+
 export interface AccountOverview {
   workspace: Workspace;
   plan: Plan;
   usage: UsageSummary;
+  subscription: SubscriptionSummary;
   plans: Plan[];
+}
+
+export type CheckoutInputPlan = typeof CheckoutInputPlan[keyof typeof CheckoutInputPlan];
+
+
+export const CheckoutInputPlan = {
+  starter: 'starter',
+  pro: 'pro',
+} as const;
+
+export interface CheckoutInput {
+  plan: CheckoutInputPlan;
+}
+
+export interface CheckoutSession {
+  url: string;
+}
+
+export interface BillingPortalSession {
+  url: string;
 }
 
 export type DashboardSummarySystemStatus = typeof DashboardSummarySystemStatus[keyof typeof DashboardSummarySystemStatus];

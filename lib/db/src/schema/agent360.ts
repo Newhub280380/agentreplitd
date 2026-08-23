@@ -1,5 +1,5 @@
 import { createInsertSchema } from "drizzle-zod";
-import { integer, jsonb, pgTable, primaryKey, text, timestamp } from "drizzle-orm/pg-core";
+import { boolean, integer, jsonb, pgTable, primaryKey, text, timestamp } from "drizzle-orm/pg-core";
 import { z } from "zod/v4";
 
 export const workspacesTable = pgTable("agent360_workspaces", {
@@ -7,7 +7,24 @@ export const workspacesTable = pgTable("agent360_workspaces", {
   userId: text("user_id").notNull().unique(),
   name: text("name").notNull(),
   plan: text("plan").notNull().default("free"),
+  stripeCustomerId: text("stripe_customer_id"),
+  stripeSubscriptionId: text("stripe_subscription_id"),
+  subscriptionStatus: text("subscription_status").notNull().default("inactive"),
+  subscriptionCurrentPeriodEnd: timestamp("subscription_current_period_end", { withTimezone: true }),
+  cancelAtPeriodEnd: boolean("cancel_at_period_end").notNull().default(false),
+  stripeCheckoutSessionId: text("stripe_checkout_session_id"),
+  pendingPlan: text("pending_plan"),
+  checkoutExpiresAt: timestamp("checkout_expires_at", { withTimezone: true }),
+  lastStripeEventCreatedAt: timestamp("last_stripe_event_created_at", { withTimezone: true }),
+  lastStripeEventId: text("last_stripe_event_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const stripeEventsTable = pgTable("agent360_stripe_events", {
+  id: text("id").primaryKey(),
+  workspaceId: text("workspace_id"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+  receivedAt: timestamp("received_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const workspaceUsageTable = pgTable(

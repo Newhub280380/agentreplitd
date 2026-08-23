@@ -100,6 +100,9 @@ async function buildAll() {
       "puppeteer",
       "puppeteer-core",
       "electron",
+      // stripe-replit-sync loads versioned SQL files from its own package.
+      // Keeping it external preserves that migrations directory at runtime.
+      "stripe-replit-sync",
     ],
     sourcemap: "linked",
     plugins: [

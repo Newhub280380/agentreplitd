@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { Plan } from './plan';
+import type { SubscriptionSummary } from './subscriptionSummary';
 import type { UsageSummary } from './usageSummary';
 import type { Workspace } from './workspace';
 
@@ -13,5 +14,6 @@ export interface AccountOverview {
   workspace: Workspace;
   plan: Plan;
   usage: UsageSummary;
+  subscription: SubscriptionSummary;
   plans: Plan[];
 }
