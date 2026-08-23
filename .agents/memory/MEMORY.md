@@ -3,3 +3,4 @@
 - [Stripe Sync migration assets](stripe-sync-migration-assets.md) — keep Stripe Sync external to the API bundle so its packaged SQL migrations remain discoverable.
 - [Stripe webhook credential throttling](stripe-webhook-credential-throttling.md) — retry transient connector 429s so a webhook burst is not rejected as a failed billing event.
 - [Mockup graduation shell checks](mockup-graduation-production-shell.md) — validate the production parent shell, not only the isolated mockup, before calling a visual redesign complete.
+- [Scoped workspace themes](scoped-workspace-themes.md) — reset semantic component tokens locally as well as explicit legacy utilities when migrating one route family.

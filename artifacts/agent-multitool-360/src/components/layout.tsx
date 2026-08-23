@@ -1,103 +1,94 @@
-import { ReactNode } from "react"
+import { ReactNode, useEffect, useRef, useState } from "react"
 import { useClerk, useUser } from "@clerk/react"
-import { Link, useRoute } from "wouter"
-import { 
-  TerminalSquare, 
-  LineChart, 
-  Send, 
-  Settings, 
-  Layers,
-  Activity
-} from "lucide-react"
+import { Link, useLocation, useRoute } from "wouter"
+import { Activity, BarChart3, Layers3, Menu, Send, Settings2, TerminalSquare, X } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useHealthCheck } from "@workspace/api-client-react"
+import "@/styles/workspace-shell.css"
+import "@/styles/workspace-theme-overrides.css"
+import "@/styles/workspace-accessibility.css"
 
-const NavItem = ({ href, icon: Icon, children }: { href: string, icon: any, children: ReactNode }) => {
-  const [isActive] = useRoute(href);
-  return (
-    <Link href={href} className={cn(
-      "flex items-center gap-3 px-4 py-3 text-sm font-display font-medium transition-colors border-l-4 uppercase tracking-wider",
-      isActive 
-        ? "border-primary bg-zinc-900 text-white" 
-        : "border-transparent text-zinc-400 hover:text-white hover:bg-zinc-900/50"
-    )}>
-      <Icon className="h-4 w-4" />
-      {children}
-    </Link>
-  )
+const navigation = [
+  { href: "/", label: "Command", icon: TerminalSquare },
+  { href: "/analytics", label: "Analytics", icon: BarChart3 },
+  { href: "/content", label: "Content", icon: Send },
+  { href: "/builder", label: "Builder", icon: Layers3 },
+  { href: "/settings", label: "Settings", icon: Settings2 },
+]
+const pageLabels: Record<string, { eyebrow: string; title: string }> = {
+  "/analytics": { eyebrow: "02 / SIGNAL INTELLIGENCE", title: "Analytics field" },
+  "/content": { eyebrow: "03 / DISTRIBUTION", title: "Content workstream" },
+  "/builder": { eyebrow: "04 / SYSTEMS", title: "Builder studio" },
+  "/settings": { eyebrow: "05 / CONTROL PLANE", title: "Workspace settings" },
+}
+
+function NavItem({ href, icon: Icon, children, onNavigate }: { href: string; icon: typeof Activity; children: ReactNode; onNavigate: () => void }) {
+  const [isActive] = useRoute(href)
+  return <Link href={href} onClick={onNavigate} data-testid={`link-workspace-${href === "/" ? "command" : href.slice(1)}`} className={cn("workspace-nav-link", isActive && "is-active")}><Icon /> <span>{children}</span></Link>
 }
 
 export function Layout({ children }: { children: ReactNode }) {
-  const { data: health } = useHealthCheck();
-  const { user } = useUser();
-  const { signOut } = useClerk();
-  const displayName = user?.fullName || user?.primaryEmailAddress?.emailAddress || "Клиент";
+  const { data: health, isLoading: isHealthLoading, isError: isHealthError } = useHealthCheck()
+  const { user } = useUser()
+  const { signOut } = useClerk()
+  const [location] = useLocation()
+  const [mobileOpen, setMobileOpen] = useState(false)
+  const [isMobile, setIsMobile] = useState(false)
+  const railRef = useRef<HTMLElement>(null)
+  const menuTriggerRef = useRef<HTMLButtonElement>(null)
+  const wasMobileOpen = useRef(false)
+  const displayName = user?.fullName || user?.primaryEmailAddress?.emailAddress || "Оператор"
+  const page = pageLabels[location] ?? { eyebrow: "CONTROL PLANE", title: "Workspace" }
+  const close = () => setMobileOpen(false)
+  const isModalNav = isMobile && mobileOpen
+  const healthState = isHealthLoading ? { label: "PENDING", className: "is-pending", description: "Health check is loading" } : isHealthError ? { label: "OFFLINE", className: "is-offline", description: "Health check failed" } : health ? { label: health.status, className: "is-online", description: `System status: ${health.status}` } : { label: "UNKNOWN", className: "is-unknown", description: "System health has not reported a status" }
 
-  return (
-    <div className="flex h-screen bg-background font-sans text-foreground selection:bg-primary selection:text-white overflow-hidden">
-      {/* Sidebar */}
-      <nav className="w-64 bg-zinc-950 flex flex-col border-r border-zinc-800">
-        <div className="h-14 flex items-center px-4 border-b border-zinc-800">
-          <div className="flex items-center gap-2 text-white font-display font-bold uppercase tracking-widest text-sm">
-            <Activity className="h-4 w-4 text-primary" />
-            Multitool 360
-          </div>
-        </div>
-        
-        <div className="flex-1 py-4 flex flex-col gap-1">
-          <NavItem href="/" icon={TerminalSquare}>Command</NavItem>
-          <NavItem href="/analytics" icon={LineChart}>Analytics</NavItem>
-          <NavItem href="/content" icon={Send}>Content</NavItem>
-          <NavItem href="/builder" icon={Layers}>Builder</NavItem>
-        </div>
+  useEffect(() => {
+    const query = window.matchMedia("(max-width: 680px)")
+    const update = () => {
+      setIsMobile(query.matches)
+      if (!query.matches) setMobileOpen(false)
+    }
+    update()
+    query.addEventListener("change", update)
+    return () => query.removeEventListener("change", update)
+  }, [])
 
-        <div className="border-t border-zinc-800 py-4 flex flex-col gap-1">
-          <NavItem href="/settings" icon={Settings}>Settings</NavItem>
-        </div>
-      </nav>
+  useEffect(() => {
+    if (!isModalNav) {
+      if (wasMobileOpen.current) menuTriggerRef.current?.focus()
+      wasMobileOpen.current = false
+      return
+    }
+    wasMobileOpen.current = true
+    const rail = railRef.current
+    const focusable = () => Array.from(rail?.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])') ?? []).filter(element => !element.hasAttribute("aria-hidden"))
+    const closeButton = rail?.querySelector<HTMLElement>(".workspace-close")
+    closeButton?.focus()
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") { event.preventDefault(); close(); return }
+      if (event.key !== "Tab") return
+      const items = focusable()
+      if (!items.length) return
+      const first = items[0], last = items[items.length - 1]
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus() }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus() }
+    }
+    document.addEventListener("keydown", onKeyDown)
+    return () => document.removeEventListener("keydown", onKeyDown)
+  }, [isModalNav])
 
-      {/* Main Content */}
-      <main className="flex-1 flex flex-col h-screen relative">
-        <header className="h-14 border-b bg-white flex items-center justify-between px-6 z-10">
-          <h1 className="font-display font-bold uppercase tracking-widest text-sm text-zinc-800">
-            Operations Console
-          </h1>
-          <div className="flex items-center gap-4">
-            <span className="font-mono text-xs text-zinc-500 uppercase">SYS_STATUS:</span>
-            {health ? (
-              <span className="flex items-center gap-1.5 font-mono text-xs font-bold text-emerald-600">
-                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                {health.status}
-              </span>
-            ) : (
-              <span className="flex items-center gap-1.5 font-mono text-xs font-bold text-amber-500">
-                <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
-                PENDING
-              </span>
-            )}
-            <div className="hidden items-center gap-2 border-l pl-4 sm:flex">
-              <div className="grid h-7 w-7 place-items-center rounded-full bg-zinc-950 font-mono text-xs font-bold text-primary">
-                {displayName.slice(0, 1).toUpperCase()}
-              </div>
-              <div className="max-w-36">
-                <p className="truncate font-display text-xs font-bold uppercase tracking-wide text-zinc-800">{displayName}</p>
-                <button
-                  type="button"
-                  onClick={() => signOut({ redirectUrl: import.meta.env.BASE_URL })}
-                  className="font-mono text-[10px] uppercase tracking-wider text-zinc-500 hover:text-primary"
-                >
-                  Выйти
-                </button>
-              </div>
-            </div>
-          </div>
-        </header>
-        <div className="flex-1 overflow-auto p-6 bg-zinc-100/50">
-          <div className="max-w-7xl mx-auto space-y-6">
-            {children}
-          </div>
-        </div>
-      </main>
-    </div>
-  )
+  return <div className="workspace-shell">
+    <aside ref={railRef} className={cn("workspace-rail", mobileOpen && "is-open")} aria-label="Workspace navigation" aria-hidden={isMobile && !mobileOpen}>
+      <div className="workspace-brand"><span className="workspace-mark"><Activity /></span><span>AGENT <b>360</b></span><button type="button" className="workspace-close" onClick={close} aria-label="Close navigation" data-testid="button-close-workspace-navigation"><X /></button></div>
+      <p className="workspace-nav-label">Control plane</p>
+      <nav>{navigation.map(({ href, label, icon }) => <NavItem key={href} href={href} icon={icon} onNavigate={close}>{label}</NavItem>)}</nav>
+      <div className="workspace-account"><div className="workspace-identity"><span>{displayName.slice(0, 1).toUpperCase()}</span><div><b data-testid="text-workspace-operator">{displayName}</b><small>authenticated operator</small></div></div><button type="button" onClick={() => signOut({ redirectUrl: import.meta.env.BASE_URL })} data-testid="button-workspace-sign-out">Выйти</button></div>
+    </aside>
+    {mobileOpen && <button type="button" className="workspace-scrim" onClick={close} aria-label="Close navigation" data-testid="button-workspace-navigation-scrim" />}
+    <main className="workspace-main" inert={isModalNav}>
+      <header className="workspace-header"><div className="workspace-title"><button ref={menuTriggerRef} type="button" className="workspace-menu" onClick={() => setMobileOpen(true)} aria-label="Open navigation" data-testid="button-open-workspace-navigation"><Menu /></button><div><p>{page.eyebrow}</p><h1>{page.title}</h1></div></div><div className="workspace-health" role="status" aria-label={healthState.description} data-testid="status-workspace-health"><span className={healthState.className} /> <b>{healthState.label}</b><small>system link</small></div></header>
+      <div className="workspace-scroll"><div className="workspace-content">{children}</div></div>
+    </main>
+  </div>
 }
