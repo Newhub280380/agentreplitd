@@ -5,3 +5,4 @@
 - [Mockup graduation shell checks](mockup-graduation-production-shell.md) — validate the production parent shell, not only the isolated mockup, before calling a visual redesign complete.
 - [Scoped workspace themes](scoped-workspace-themes.md) — reset semantic component tokens locally as well as explicit legacy utilities when migrating one route family.
 - [PWA workspace data safety](pwa-workspace-data-safety.md) — keep the service worker away from authenticated API and Clerk responses to protect workspace isolation.
+- [Post-merge Drizzle safety](post-merge-drizzle-safety.md) — exclude runtime-only migration ledgers so dev schema sync does not interpret them as deletions.
