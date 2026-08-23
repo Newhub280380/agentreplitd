@@ -9,7 +9,8 @@
 - `pnpm --filter @workspace/agent-multitool-360 run dev` — run the React command center
 - `pnpm run typecheck` — full typecheck across all packages
 - `pnpm --filter @workspace/scripts run security-test` — run authentication, workspace-isolation, and quota regression checks
-- `pnpm run build` — typecheck + build all packages
+- `pnpm run build` — typecheck + build all packages; frontend builds use their
+  artifact defaults when `PORT` and `BASE_PATH` are not set
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
 - `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
 - Required env: `DATABASE_URL` — Postgres connection string
