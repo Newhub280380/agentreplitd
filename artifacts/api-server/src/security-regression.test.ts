@@ -10,6 +10,8 @@ import type { ErrorResponse, QuotaExceededResponse } from "@workspace/api-zod";
 import { pool } from "@workspace/db";
 import productionApp, { createTestApp } from "./app";
 import { initializeAgent360Schema } from "./lib/agent360-schema-init";
+import { getOrCreatePrice } from "./lib/stripeService";
+import type Stripe from "stripe";
 
 const testUserPrefix = `security-test-${Date.now()}-`;
 const userIds = new Set<string>();
@@ -98,6 +100,63 @@ after(async () => {
 });
 
 describe("agent 360 authentication and quota regression", () => {
+  test("reuses one Stripe product and price during parallel catalog creation", async () => {
+    const products: Array<{ id: string; created: number; metadata: { agent360_plan: string } }> = [];
+    const prices: Array<{
+      id: string;
+      created: number;
+      currency: string;
+      unit_amount: number;
+      recurring: { interval: string };
+    }> = [];
+    let productCreates = 0;
+    let priceCreates = 0;
+    const wait = () => new Promise((resolve) => setTimeout(resolve, 25));
+    const stripe = {
+      products: {
+        list: async () => ({ data: products }),
+        create: async () => {
+          productCreates += 1;
+          await wait();
+          const product = {
+            id: "prod_agent360_starter",
+            created: 1,
+            metadata: { agent360_plan: "starter" },
+          };
+          products.push(product);
+          return product;
+        },
+        update: async () => undefined,
+      },
+      prices: {
+        list: async () => ({ data: prices }),
+        create: async () => {
+          priceCreates += 1;
+          await wait();
+          const price = {
+            id: "price_agent360_starter_monthly",
+            created: 1,
+            currency: "usd",
+            unit_amount: 900,
+            recurring: { interval: "month" },
+          };
+          prices.push(price);
+          return price;
+        },
+        update: async () => undefined,
+      },
+    } as unknown as Stripe;
+
+    const result = await Promise.all([
+      getOrCreatePrice("starter", stripe),
+      getOrCreatePrice("starter", stripe),
+    ]);
+
+    assert.deepEqual(result, ["price_agent360_starter_monthly", "price_agent360_starter_monthly"]);
+    assert.equal(productCreates, 1);
+    assert.equal(priceCreates, 1);
+  });
+
   test("initializes publishing schema without a Stripe domain", async () => {
     const originalDomain = process.env.REPLIT_DOMAINS;
     delete process.env.REPLIT_DOMAINS;
