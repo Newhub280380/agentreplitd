@@ -9,6 +9,7 @@
     "stripe-webhook-test": "NODE_ENV=test RUN_STRIPE_WEBHOOK_REGRESSION=true tsx --test ../artifacts/api-server/src/security-regression.test.ts",
     "stripe-webhook-browser-test": "NODE_ENV=test RUN_STRIPE_WEBHOOK_REGRESSION=true STRIPE_CHECKOUT_BROWSER_HOLD_SECONDS=180 tsx --test ../artifacts/api-server/src/security-regression.test.ts",
     "stripe-webhook-browser-release-test": "tsx ./src/stripe-webhook-browser-release-test.ts",
+    "stripe-webhook-browser-release-cancellation-test": "NODE_ENV=test tsx --test --test-name-pattern=\"release runner writes cancellation failure before child cleanup completes\" ../artifacts/api-server/src/security-regression.test.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "devDependencies": {

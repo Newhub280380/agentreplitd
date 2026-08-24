@@ -13,9 +13,51 @@ const completionFile = process.env.STRIPE_CHECKOUT_BROWSER_COMPLETION_FILE ?? re
 const failureFile = process.env.STRIPE_CHECKOUT_BROWSER_FAILURE_FILE ?? resolve(runDirectory, "failed");
 const holdSeconds = process.env.STRIPE_CHECKOUT_BROWSER_HOLD_SECONDS ?? "600";
 
+type ChildCommand = {
+  command: string;
+  args: string[];
+};
+
+function getChildCommand(): ChildCommand {
+  const configuredCommand = process.env.STRIPE_CHECKOUT_BROWSER_RELEASE_CHILD_COMMAND;
+  if (!configuredCommand) {
+    return {
+      command: process.execPath,
+      args: ["--import", "tsx/esm", "--test", testFile],
+    };
+  }
+
+  let parsedCommand: unknown;
+  try {
+    parsedCommand = JSON.parse(configuredCommand);
+  } catch (error) {
+    throw new Error(
+      `STRIPE_CHECKOUT_BROWSER_RELEASE_CHILD_COMMAND must be valid JSON: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
+
+  if (
+    !parsedCommand ||
+    typeof parsedCommand !== "object" ||
+    typeof (parsedCommand as { command?: unknown }).command !== "string" ||
+    !(parsedCommand as { command: string }).command ||
+    !Array.isArray((parsedCommand as { args?: unknown }).args) ||
+    !(parsedCommand as { args: unknown[] }).args.every((argument) => typeof argument === "string")
+  ) {
+    throw new Error(
+      "STRIPE_CHECKOUT_BROWSER_RELEASE_CHILD_COMMAND must be a JSON object with a non-empty command and string args.",
+    );
+  }
+
+  return parsedCommand as ChildCommand;
+}
+
+const childCommand = getChildCommand();
 const child = spawn(
-  process.execPath,
-  ["--import", "tsx/esm", "--test", testFile],
+  childCommand.command,
+  childCommand.args,
   {
     cwd: workspaceDirectory,
     env: {
