@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { dirname } from "node:path";
 import { createServer, type Server } from "node:http";
 import { after, before, describe, test } from "node:test";
 import {
@@ -10,6 +12,7 @@ import type { ErrorResponse, QuotaExceededResponse } from "@workspace/api-zod";
 import { pool } from "@workspace/db";
 import productionApp, { createTestApp } from "./app";
 import { initializeAgent360Schema } from "./lib/agent360-schema-init";
+import { applyStripeSubscriptionState } from "./lib/agent360-store";
 import { getOrCreatePrice } from "./lib/stripeService";
 import { getStripeCredentials } from "./lib/stripeClient";
 import Stripe from "stripe";
@@ -35,6 +38,9 @@ const stripeCheckoutBrowserHoldSeconds = Number.parseInt(
 );
 const stripeCheckoutBrowserRegressionEnabled = Number.isFinite(stripeCheckoutBrowserHoldSeconds)
   && stripeCheckoutBrowserHoldSeconds > 0;
+const stripeCheckoutBrowserSessionFile = process.env.STRIPE_CHECKOUT_BROWSER_SESSION_FILE;
+const stripeCheckoutBrowserCompletionFile = process.env.STRIPE_CHECKOUT_BROWSER_COMPLETION_FILE;
+const stripeCheckoutBrowserFailureFile = process.env.STRIPE_CHECKOUT_BROWSER_FAILURE_FILE;
 
 let server: Server;
 let baseUrl: string;
@@ -103,6 +109,45 @@ function eventReferencesSubscription(event: Stripe.Event, subscriptionId: string
 
 async function wait(milliseconds: number): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+async function waitForHostedCheckoutBrowser({
+  resources,
+  timeoutSeconds,
+}: {
+  resources: Map<PaidPlanId, StripeTestResource>;
+  timeoutSeconds: number;
+}): Promise<void> {
+  if (!stripeCheckoutBrowserCompletionFile) {
+    await wait(timeoutSeconds * 1_000);
+    return;
+  }
+
+  const deadline = Date.now() + timeoutSeconds * 1_000;
+  while (Date.now() < deadline) {
+    if (stripeCheckoutBrowserFailureFile) {
+      try {
+        const reason = (await readFile(stripeCheckoutBrowserFailureFile, "utf8")).trim();
+        throw new Error(reason || "The hosted Checkout browser harness reported a failure.");
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      }
+    }
+
+    try {
+      await readFile(stripeCheckoutBrowserCompletionFile, "utf8");
+      return;
+    } catch {
+      await wait(1_000);
+    }
+  }
+
+  const completedPlans = paidPlanIds
+    .filter((planId) => resources.get(planId)?.checkoutSessionUrl)
+    .join(", ");
+  throw new Error(
+    `Hosted Checkout browser harness did not complete within ${timeoutSeconds}s (sessions: ${completedPlans}).`,
+  );
 }
 
 async function relatedStripeEvents(
@@ -249,6 +294,11 @@ after(async () => {
   if (ids.length > 0) {
     const placeholders = ids.map((_, index) => `$${index + 1}`).join(", ");
     const workspaceQuery = `(SELECT id FROM agent360_workspaces WHERE user_id IN (${placeholders}))`;
+    const workspaceResult = await pool.query<{ id: string }>(
+      `SELECT id FROM agent360_workspaces WHERE user_id IN (${placeholders})`,
+      ids,
+    );
+    const workspaceIds = workspaceResult.rows.map(({ id }) => id);
     for (const table of [
       "agent360_activities",
       "agent360_memories",
@@ -264,6 +314,16 @@ after(async () => {
       await pool.query(`DELETE FROM ${table} WHERE workspace_id IN ${workspaceQuery}`, ids);
     }
     await pool.query(`DELETE FROM agent360_workspaces WHERE user_id IN (${placeholders})`, ids);
+    if (workspaceIds.length > 0) {
+      const remainingEvents = await pool.query<{ count: string }>(
+        `SELECT count(*)::text AS count
+         FROM agent360_stripe_events
+         WHERE workspace_id = ANY($1::text[])`,
+        [workspaceIds],
+      );
+      assert.equal(Number(remainingEvents.rows[0]?.count ?? 0), 0);
+      console.log(`Confirmed no Stripe test event rows remain for ${workspaceIds.length} workspace(s).`);
+    }
   }
   await pool.end();
 });
@@ -373,6 +433,29 @@ describe("agent 360 authentication and quota regression", () => {
     assert.deepEqual(deactivatedPriceIds, ["price_agent360_starter_legacy_monthly"]);
   });
 
+  test("does not persist a Stripe event after its workspace is deleted", async () => {
+    const workspaceId = `deleted-workspace-${Date.now()}`;
+    const eventId = `evt_deleted_workspace_${Date.now()}`;
+    const outcome = await applyStripeSubscriptionState({
+      eventId,
+      eventCreatedAt: new Date(),
+      workspaceId,
+      stripeCustomerId: "cus_deleted_workspace",
+      stripeSubscriptionId: "sub_deleted_workspace",
+      status: "canceled",
+      currentPeriodEnd: null,
+      cancelAtPeriodEnd: false,
+      planId: "starter",
+    });
+
+    assert.equal(outcome, "stale");
+    const persisted = await pool.query<{ count: string }>(
+      `SELECT count(*)::text AS count FROM agent360_stripe_events WHERE id = $1`,
+      [eventId],
+    );
+    assert.equal(Number(persisted.rows[0]?.count ?? 0), 0);
+  });
+
   test(
     "keeps one active monthly USD catalog per paid plan during real test-mode webhook delivery",
     { skip: stripeWebhookRegressionEnabled ? false : "Set RUN_STRIPE_WEBHOOK_REGRESSION=true to run Stripe test-mode delivery." },
@@ -433,6 +516,21 @@ describe("agent 360 authentication and quota regression", () => {
         }
 
         if (stripeCheckoutBrowserRegressionEnabled) {
+          if (stripeCheckoutBrowserSessionFile) {
+            await mkdir(dirname(stripeCheckoutBrowserSessionFile), { recursive: true });
+            await writeFile(
+              stripeCheckoutBrowserSessionFile,
+              JSON.stringify(
+                paidPlanIds.map((planId) => ({
+                  planId,
+                  url: resources.get(planId)?.checkoutSessionUrl,
+                })),
+                null,
+                2,
+              ),
+              "utf8",
+            );
+          }
           console.log(
             `Complete both hosted Checkout sessions within ${stripeCheckoutBrowserHoldSeconds}s: ${
               JSON.stringify(
@@ -443,7 +541,10 @@ describe("agent 360 authentication and quota regression", () => {
               )
             }`,
           );
-          await wait(stripeCheckoutBrowserHoldSeconds * 1_000);
+          await waitForHostedCheckoutBrowser({
+            resources,
+            timeoutSeconds: stripeCheckoutBrowserHoldSeconds,
+          });
         }
 
         const subscriptions = await Promise.all(
@@ -573,7 +674,8 @@ describe("agent 360 authentication and quota regression", () => {
               const cancellationStarted = Math.floor(Date.now() / 1_000) - 5;
               const subscription = await stripeClient.subscriptions.retrieve(resource.subscriptionId);
               if (subscription.status !== "canceled") {
-                await stripeClient.subscriptions.cancel(resource.subscriptionId);
+                const canceledSubscription = await stripeClient.subscriptions.cancel(resource.subscriptionId);
+                assert.equal(canceledSubscription.status, "canceled");
                 const deletedEvent = await relatedStripeEventByType(
                   stripeClient,
                   "customer.subscription.deleted",
@@ -595,7 +697,8 @@ describe("agent 360 authentication and quota regression", () => {
             });
             for (const session of sessions.data) {
               if (session.status === "open") {
-                await stripeClient.checkout.sessions.expire(session.id);
+                const expiredSession = await stripeClient.checkout.sessions.expire(session.id);
+                assert.equal(expiredSession.status, "expired");
               }
             }
           } catch (error) {
@@ -604,14 +707,16 @@ describe("agent 360 authentication and quota regression", () => {
 
           if (resource.paymentMethodId) {
             try {
-              await stripeClient.paymentMethods.detach(resource.paymentMethodId);
+              const detachedPaymentMethod = await stripeClient.paymentMethods.detach(resource.paymentMethodId);
+              assert.equal(detachedPaymentMethod.customer, null);
             } catch (error) {
               cleanupFailures.push(`${planId} payment method: ${error instanceof Error ? error.message : String(error)}`);
             }
           }
 
           try {
-            await stripeClient.customers.del(resource.customerId);
+            const deletedCustomer = await stripeClient.customers.del(resource.customerId);
+            assert.equal(deletedCustomer.deleted, true);
           } catch (error) {
             cleanupFailures.push(`${planId} customer: ${error instanceof Error ? error.message : String(error)}`);
           }
