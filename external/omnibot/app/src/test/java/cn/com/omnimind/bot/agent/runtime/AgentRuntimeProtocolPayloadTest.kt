@@ -45,6 +45,11 @@ class AgentRuntimeProtocolPayloadTest {
             )
         )
         assertTrue(
+            deepSeekRuntime?.managedAdapterPackages.orEmpty().contains(
+                "@deepseek-ai/dsh-attachment-local@next"
+            )
+        )
+        assertTrue(
             deepSeekRuntime?.managedAdapterPackages.orEmpty()
                 .all { it.endsWith("@next") }
         )
@@ -77,6 +82,7 @@ class AgentRuntimeProtocolPayloadTest {
 
     @Test
     fun deepSeekHarnessConfigRoundTripsAndBuildsLaunchEnvironment() {
+        assertEquals("deepseek-v4-flash-vision-exp", DeepSeekHarnessConfig().model)
         val config = DeepSeekHarnessConfig(
             baseUrl = "https://gateway.example/v1",
             model = "deepseek-custom",
@@ -95,6 +101,17 @@ class AgentRuntimeProtocolPayloadTest {
         assertEquals("high", restored.toEnvironment()["DSH_REASONING_EFFORT"])
         assertEquals("read-only", restored.toEnvironment()["DSH_PERMISSION_MODE"])
         assertEquals("1", restored.toEnvironment()["NODE_NO_WARNINGS"])
+    }
+
+    @Test
+    fun imageAttachmentIsRejectedBeforeATextOnlyAcpRouteCanDowngradeItToALink() {
+        assertEquals(
+            "The selected browser agent model does not support image input. " +
+                "Select a vision model, such as deepseek-v4-flash-vision-exp.",
+            imageAttachmentInputError(isImage = true, supportsImages = false)
+        )
+        assertNull(imageAttachmentInputError(isImage = true, supportsImages = true))
+        assertNull(imageAttachmentInputError(isImage = false, supportsImages = false))
     }
 
     @Test
@@ -124,6 +141,7 @@ class AgentRuntimeProtocolPayloadTest {
         assertTrue(config.contains("process.env.DSH_MODEL"))
         assertTrue(config.contains("process.env.DSH_REASONING_EFFORT"))
         assertTrue(config.contains("process.env.DSH_PERMISSION_MODE"))
+        assertTrue(config.contains("deepseek-v4-flash-vision-exp"))
         assertTrue(config.contains("policy: ask"))
     }
 
@@ -150,6 +168,15 @@ class AgentRuntimeProtocolPayloadTest {
         assertTrue(source.contains("category: 'mode'"))
         assertTrue(source.contains("installModelSelection(agentCtx, selection)"))
         assertTrue(source.contains("setSandboxMode(record.agent.session, mode)"))
+        assertTrue(source.contains("LocalAttachmentStore"))
+        assertTrue(source.contains("attachments.saveImages"))
+        assertTrue(source.contains("routeSupportsImages"))
+        assertTrue(source.contains("promptCapabilities: { image: imagePromptEnabled"))
+        assertTrue(
+            source.contains(
+                "changing the model between vision and text-only routes requires restarting the browser agent"
+            )
+        )
     }
 
     @Test

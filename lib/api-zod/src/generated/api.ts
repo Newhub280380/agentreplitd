@@ -356,8 +356,24 @@ export const GetContentResponseItem = zod.object({
   "title": zod.string(),
   "body": zod.string(),
   "channels": zod.array(zod.string()),
-  "status": zod.enum(['draft', 'scheduled', 'publishing', 'published', 'partial', 'failed']),
-  "imageUrl": zod.string().nullish(),
+  "status": zod.enum(['draft', 'in_review', 'changes_requested', 'approved', 'scheduled', 'publishing', 'published', 'partial', 'failed']),
+  "imageUrl": zod.string().nullable(),
+  "format": zod.enum(['expert_post', 'product_card', 'reels_brief', 'sales_message']),
+  "dossierId": zod.string().nullable(),
+  "reviewState": zod.enum(['pending', 'in_review', 'changes_requested', 'approved']),
+  "claimWarnings": zod.array(zod.string()),
+  "requiresHumanReview": zod.boolean(),
+  "reviewedBy": zod.string().nullable(),
+  "reviewedAt": zod.coerce.date().nullable(),
+  "contentVersion": zod.number(),
+  "reviewTrail": zod.array(zod.object({
+  "decision": zod.enum(['in_review', 'changes_requested', 'approved']),
+  "reviewer": zod.string(),
+  "notes": zod.string(),
+  "attested": zod.boolean().describe('Reviewer explicitly acknowledged the decision and evidence review.'),
+  "version": zod.number(),
+  "createdAt": zod.coerce.date()
+})),
   "createdAt": zod.coerce.date(),
   "deliveries": zod.array(zod.object({
   "channel": zod.enum(['telegram', 'vk', 'instagram']),
@@ -380,7 +396,9 @@ export const generateContentBodyTopicMin = 2;
 export const GenerateContentBody = zod.object({
   "topic": zod.string().min(generateContentBodyTopicMin),
   "channels": zod.array(zod.enum(['telegram', 'vk', 'instagram'])),
-  "tone": zod.string().optional()
+  "tone": zod.string().optional(),
+  "dossierId": zod.string().optional(),
+  "format": zod.enum(['expert_post', 'product_card', 'reels_brief', 'sales_message']).optional()
 })
 
 export const GenerateContentResponse = zod.object({
@@ -388,8 +406,24 @@ export const GenerateContentResponse = zod.object({
   "title": zod.string(),
   "body": zod.string(),
   "channels": zod.array(zod.string()),
-  "status": zod.enum(['draft', 'scheduled', 'publishing', 'published', 'partial', 'failed']),
-  "imageUrl": zod.string().nullish(),
+  "status": zod.enum(['draft', 'in_review', 'changes_requested', 'approved', 'scheduled', 'publishing', 'published', 'partial', 'failed']),
+  "imageUrl": zod.string().nullable(),
+  "format": zod.enum(['expert_post', 'product_card', 'reels_brief', 'sales_message']),
+  "dossierId": zod.string().nullable(),
+  "reviewState": zod.enum(['pending', 'in_review', 'changes_requested', 'approved']),
+  "claimWarnings": zod.array(zod.string()),
+  "requiresHumanReview": zod.boolean(),
+  "reviewedBy": zod.string().nullable(),
+  "reviewedAt": zod.coerce.date().nullable(),
+  "contentVersion": zod.number(),
+  "reviewTrail": zod.array(zod.object({
+  "decision": zod.enum(['in_review', 'changes_requested', 'approved']),
+  "reviewer": zod.string(),
+  "notes": zod.string(),
+  "attested": zod.boolean().describe('Reviewer explicitly acknowledged the decision and evidence review.'),
+  "version": zod.number(),
+  "createdAt": zod.coerce.date()
+})),
   "createdAt": zod.coerce.date(),
   "deliveries": zod.array(zod.object({
   "channel": zod.enum(['telegram', 'vk', 'instagram']),
@@ -421,8 +455,24 @@ export const PublishContentResponse = zod.object({
   "title": zod.string(),
   "body": zod.string(),
   "channels": zod.array(zod.string()),
-  "status": zod.enum(['draft', 'scheduled', 'publishing', 'published', 'partial', 'failed']),
-  "imageUrl": zod.string().nullish(),
+  "status": zod.enum(['draft', 'in_review', 'changes_requested', 'approved', 'scheduled', 'publishing', 'published', 'partial', 'failed']),
+  "imageUrl": zod.string().nullable(),
+  "format": zod.enum(['expert_post', 'product_card', 'reels_brief', 'sales_message']),
+  "dossierId": zod.string().nullable(),
+  "reviewState": zod.enum(['pending', 'in_review', 'changes_requested', 'approved']),
+  "claimWarnings": zod.array(zod.string()),
+  "requiresHumanReview": zod.boolean(),
+  "reviewedBy": zod.string().nullable(),
+  "reviewedAt": zod.coerce.date().nullable(),
+  "contentVersion": zod.number(),
+  "reviewTrail": zod.array(zod.object({
+  "decision": zod.enum(['in_review', 'changes_requested', 'approved']),
+  "reviewer": zod.string(),
+  "notes": zod.string(),
+  "attested": zod.boolean().describe('Reviewer explicitly acknowledged the decision and evidence review.'),
+  "version": zod.number(),
+  "createdAt": zod.coerce.date()
+})),
   "createdAt": zod.coerce.date(),
   "deliveries": zod.array(zod.object({
   "channel": zod.enum(['telegram', 'vk', 'instagram']),
@@ -431,6 +481,172 @@ export const PublishContentResponse = zod.object({
   "detail": zod.string(),
   "externalId": zod.string().nullable()
 })).optional()
+})
+
+
+/**
+ * @summary Record a human review decision for governed medical content
+ */
+export const ReviewContentParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const reviewContentBodyReviewerMin = 2;
+export const reviewContentBodyReviewerMax = 120;
+
+export const reviewContentBodyNotesMax = 1200;
+
+
+
+export const ReviewContentBody = zod.object({
+  "decision": zod.enum(['in_review', 'changes_requested', 'approved']),
+  "reviewer": zod.string().min(reviewContentBodyReviewerMin).max(reviewContentBodyReviewerMax).optional(),
+  "notes": zod.string().max(reviewContentBodyNotesMax).optional(),
+  "confirmed": zod.boolean().describe('Must be true after an operator has reviewed all claims and warnings.')
+})
+
+export const ReviewContentResponse = zod.object({
+  "id": zod.string(),
+  "title": zod.string(),
+  "body": zod.string(),
+  "channels": zod.array(zod.string()),
+  "status": zod.enum(['draft', 'in_review', 'changes_requested', 'approved', 'scheduled', 'publishing', 'published', 'partial', 'failed']),
+  "imageUrl": zod.string().nullable(),
+  "format": zod.enum(['expert_post', 'product_card', 'reels_brief', 'sales_message']),
+  "dossierId": zod.string().nullable(),
+  "reviewState": zod.enum(['pending', 'in_review', 'changes_requested', 'approved']),
+  "claimWarnings": zod.array(zod.string()),
+  "requiresHumanReview": zod.boolean(),
+  "reviewedBy": zod.string().nullable(),
+  "reviewedAt": zod.coerce.date().nullable(),
+  "contentVersion": zod.number(),
+  "reviewTrail": zod.array(zod.object({
+  "decision": zod.enum(['in_review', 'changes_requested', 'approved']),
+  "reviewer": zod.string(),
+  "notes": zod.string(),
+  "attested": zod.boolean().describe('Reviewer explicitly acknowledged the decision and evidence review.'),
+  "version": zod.number(),
+  "createdAt": zod.coerce.date()
+})),
+  "createdAt": zod.coerce.date(),
+  "deliveries": zod.array(zod.object({
+  "channel": zod.enum(['telegram', 'vk', 'instagram']),
+  "target": zod.string(),
+  "status": zod.enum(['published', 'failed']),
+  "detail": zod.string(),
+  "externalId": zod.string().nullable()
+})).optional()
+})
+
+
+/**
+ * @summary List governed medical product dossiers in the signed-in workspace
+ */
+export const GetMedicalDossiersResponseItem = zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "volume": zod.string(),
+  "sourceLinks": zod.array(zod.string()),
+  "registrationSafety": zod.string(),
+  "approvedClaims": zod.array(zod.string()),
+  "audiences": zod.array(zod.string()),
+  "reviewState": zod.enum(['needs_evidence', 'in_review', 'approved', 'changes_requested']),
+  "version": zod.number(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+export const GetMedicalDossiersResponse = zod.array(GetMedicalDossiersResponseItem)
+
+
+/**
+ * @summary Create a governed medical product dossier
+ */
+export const createMedicalDossierBodyNameMin = 2;
+export const createMedicalDossierBodyNameMax = 200;
+
+export const createMedicalDossierBodyVolumeMax = 80;
+
+export const createMedicalDossierBodyRegistrationSafetyMin = 10;
+export const createMedicalDossierBodyRegistrationSafetyMax = 4000;
+
+export const createMedicalDossierBodyApprovedClaimsItemMin = 3;
+export const createMedicalDossierBodyApprovedClaimsItemMax = 500;
+
+export const createMedicalDossierBodyAudiencesItemMin = 2;
+export const createMedicalDossierBodyAudiencesItemMax = 200;
+
+
+
+export const CreateMedicalDossierBody = zod.object({
+  "name": zod.string().min(createMedicalDossierBodyNameMin).max(createMedicalDossierBodyNameMax),
+  "volume": zod.string().min(1).max(createMedicalDossierBodyVolumeMax),
+  "sourceLinks": zod.array(zod.string()).optional(),
+  "registrationSafety": zod.string().min(createMedicalDossierBodyRegistrationSafetyMin).max(createMedicalDossierBodyRegistrationSafetyMax),
+  "approvedClaims": zod.array(zod.string().min(createMedicalDossierBodyApprovedClaimsItemMin).max(createMedicalDossierBodyApprovedClaimsItemMax)).optional(),
+  "audiences": zod.array(zod.string().min(createMedicalDossierBodyAudiencesItemMin).max(createMedicalDossierBodyAudiencesItemMax)).optional(),
+  "reviewState": zod.enum(['needs_evidence', 'in_review', 'approved', 'changes_requested'])
+})
+
+export const CreateMedicalDossierResponse = zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "volume": zod.string(),
+  "sourceLinks": zod.array(zod.string()),
+  "registrationSafety": zod.string(),
+  "approvedClaims": zod.array(zod.string()),
+  "audiences": zod.array(zod.string()),
+  "reviewState": zod.enum(['needs_evidence', 'in_review', 'approved', 'changes_requested']),
+  "version": zod.number(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Update a workspace-owned medical product dossier
+ */
+export const UpdateMedicalDossierParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const updateMedicalDossierBodyNameMin = 2;
+export const updateMedicalDossierBodyNameMax = 200;
+
+export const updateMedicalDossierBodyVolumeMax = 80;
+
+export const updateMedicalDossierBodyRegistrationSafetyMin = 10;
+export const updateMedicalDossierBodyRegistrationSafetyMax = 4000;
+
+export const updateMedicalDossierBodyApprovedClaimsItemMin = 3;
+export const updateMedicalDossierBodyApprovedClaimsItemMax = 500;
+
+export const updateMedicalDossierBodyAudiencesItemMin = 2;
+export const updateMedicalDossierBodyAudiencesItemMax = 200;
+
+
+
+export const UpdateMedicalDossierBody = zod.object({
+  "name": zod.string().min(updateMedicalDossierBodyNameMin).max(updateMedicalDossierBodyNameMax).optional(),
+  "volume": zod.string().min(1).max(updateMedicalDossierBodyVolumeMax).optional(),
+  "sourceLinks": zod.array(zod.string()).optional(),
+  "registrationSafety": zod.string().min(updateMedicalDossierBodyRegistrationSafetyMin).max(updateMedicalDossierBodyRegistrationSafetyMax).optional(),
+  "approvedClaims": zod.array(zod.string().min(updateMedicalDossierBodyApprovedClaimsItemMin).max(updateMedicalDossierBodyApprovedClaimsItemMax)).optional(),
+  "audiences": zod.array(zod.string().min(updateMedicalDossierBodyAudiencesItemMin).max(updateMedicalDossierBodyAudiencesItemMax)).optional(),
+  "reviewState": zod.enum(['needs_evidence', 'in_review', 'approved', 'changes_requested']).optional()
+})
+
+export const UpdateMedicalDossierResponse = zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "volume": zod.string(),
+  "sourceLinks": zod.array(zod.string()),
+  "registrationSafety": zod.string(),
+  "approvedClaims": zod.array(zod.string()),
+  "audiences": zod.array(zod.string()),
+  "reviewState": zod.enum(['needs_evidence', 'in_review', 'approved', 'changes_requested']),
+  "version": zod.number(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
 })
 
 

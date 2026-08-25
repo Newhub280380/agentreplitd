@@ -5,7 +5,10 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { ContentItemFormat } from './contentItemFormat';
+import type { ContentItemReviewState } from './contentItemReviewState';
 import type { ContentItemStatus } from './contentItemStatus';
+import type { ContentReviewEvent } from './contentReviewEvent';
 import type { PublishDelivery } from './publishDelivery';
 
 export interface ContentItem {
@@ -15,7 +18,19 @@ export interface ContentItem {
   channels: string[];
   status: ContentItemStatus;
   /** @nullable */
-  imageUrl?: string | null;
+  imageUrl: string | null;
+  format: ContentItemFormat;
+  /** @nullable */
+  dossierId: string | null;
+  reviewState: ContentItemReviewState;
+  claimWarnings: string[];
+  requiresHumanReview: boolean;
+  /** @nullable */
+  reviewedBy: string | null;
+  /** @nullable */
+  reviewedAt: Date | null;
+  contentVersion: number;
+  reviewTrail: ContentReviewEvent[];
   createdAt: Date;
   deliveries?: PublishDelivery[];
 }

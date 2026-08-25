@@ -29,7 +29,7 @@ export default function SettingsPage() {
   const { data: account, isLoading: isLoadingAccount } = useGetAccountOverview();
   const { toast } = useToast();
   const [connectOpen, setConnectOpen] = useState(false);
-  const [provider, setProvider] = useState<"telegram" | "vk" | "instagram">("telegram");
+  const [provider, setProvider] = useState<"telegram" | "vk">("telegram");
   const [target, setTarget] = useState("");
   const [credential, setCredential] = useState("");
   const refreshConnections = () => queryClient.invalidateQueries({ queryKey: getGetConnectionsQueryKey() });
@@ -97,7 +97,7 @@ export default function SettingsPage() {
     checkout.mutate({ data: { plan: planId } });
   };
 
-  const openConnect = (channel: "telegram" | "vk" | "instagram" = "telegram") => {
+  const openConnect = (channel: "telegram" | "vk" = "telegram") => {
     setProvider(channel);
     setTarget("");
     setCredential("");
@@ -286,9 +286,13 @@ export default function SettingsPage() {
                               </Button>
                             </>
                           ) : (
-                            <Button size="sm" onClick={() => openConnect(conn.channel!)}>
-                              <Link2 className="h-3.5 w-3.5" /> Подключить
-                            </Button>
+                            conn.channel === "telegram" || conn.channel === "vk" ? (
+                              <Button size="sm" onClick={() => openConnect(conn.channel === "vk" ? "vk" : "telegram")}>
+                                <Link2 className="h-3.5 w-3.5" /> Подключить
+                              </Button>
+                            ) : (
+                              <span className="font-mono text-[10px] text-muted-foreground">INTEGRATION UNAVAILABLE</span>
+                            )
                           )}
                         </div>
                       ) : "—"}
@@ -365,7 +369,6 @@ export default function SettingsPage() {
               >
                 <option value="telegram">Telegram</option>
                 <option value="vk">VK</option>
-                <option value="instagram">Instagram</option>
               </select>
             </div>
             <div className="space-y-2">
@@ -374,7 +377,7 @@ export default function SettingsPage() {
                 id="channel-target"
                 value={target}
                 onChange={(event) => setTarget(event.target.value)}
-                placeholder={provider === "telegram" ? "@my_channel или -100…" : provider === "vk" ? "Числовой ID сообщества" : "ID бизнес-аккаунта"}
+                placeholder={provider === "telegram" ? "@my_channel или -100…" : "Числовой ID сообщества"}
                 maxLength={200}
                 autoComplete="off"
               />
@@ -386,7 +389,7 @@ export default function SettingsPage() {
                 type="password"
                 value={credential}
                 onChange={(event) => setCredential(event.target.value)}
-                placeholder={provider === "telegram" ? "Токен бота" : provider === "vk" ? "Токен сообщества" : "Access token"}
+                placeholder={provider === "telegram" ? "Токен бота" : "Токен сообщества"}
                 autoComplete="new-password"
               />
               <p className="font-mono text-xs text-muted-foreground">

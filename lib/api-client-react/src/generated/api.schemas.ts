@@ -352,11 +352,23 @@ export const ContentInputChannelsItem = {
   instagram: 'instagram',
 } as const;
 
+export type ContentInputFormat = typeof ContentInputFormat[keyof typeof ContentInputFormat];
+
+
+export const ContentInputFormat = {
+  expert_post: 'expert_post',
+  product_card: 'product_card',
+  reels_brief: 'reels_brief',
+  sales_message: 'sales_message',
+} as const;
+
 export interface ContentInput {
   /** @minLength 2 */
   topic: string;
   channels: ContentInputChannelsItem[];
   tone?: string;
+  dossierId?: string;
+  format?: ContentInputFormat;
 }
 
 export type ContentItemStatus = typeof ContentItemStatus[keyof typeof ContentItemStatus];
@@ -364,12 +376,54 @@ export type ContentItemStatus = typeof ContentItemStatus[keyof typeof ContentIte
 
 export const ContentItemStatus = {
   draft: 'draft',
+  in_review: 'in_review',
+  changes_requested: 'changes_requested',
+  approved: 'approved',
   scheduled: 'scheduled',
   publishing: 'publishing',
   published: 'published',
   partial: 'partial',
   failed: 'failed',
 } as const;
+
+export type ContentItemFormat = typeof ContentItemFormat[keyof typeof ContentItemFormat];
+
+
+export const ContentItemFormat = {
+  expert_post: 'expert_post',
+  product_card: 'product_card',
+  reels_brief: 'reels_brief',
+  sales_message: 'sales_message',
+} as const;
+
+export type ContentItemReviewState = typeof ContentItemReviewState[keyof typeof ContentItemReviewState];
+
+
+export const ContentItemReviewState = {
+  pending: 'pending',
+  in_review: 'in_review',
+  changes_requested: 'changes_requested',
+  approved: 'approved',
+} as const;
+
+export type ContentReviewEventDecision = typeof ContentReviewEventDecision[keyof typeof ContentReviewEventDecision];
+
+
+export const ContentReviewEventDecision = {
+  in_review: 'in_review',
+  changes_requested: 'changes_requested',
+  approved: 'approved',
+} as const;
+
+export interface ContentReviewEvent {
+  decision: ContentReviewEventDecision;
+  reviewer: string;
+  notes: string;
+  /** Reviewer explicitly acknowledged the decision and evidence review. */
+  attested: boolean;
+  version: number;
+  createdAt: string;
+}
 
 export type PublishDeliveryChannel = typeof PublishDeliveryChannel[keyof typeof PublishDeliveryChannel];
 
@@ -404,7 +458,19 @@ export interface ContentItem {
   channels: string[];
   status: ContentItemStatus;
   /** @nullable */
-  imageUrl?: string | null;
+  imageUrl: string | null;
+  format: ContentItemFormat;
+  /** @nullable */
+  dossierId: string | null;
+  reviewState: ContentItemReviewState;
+  claimWarnings: string[];
+  requiresHumanReview: boolean;
+  /** @nullable */
+  reviewedBy: string | null;
+  /** @nullable */
+  reviewedAt: string | null;
+  contentVersion: number;
+  reviewTrail: ContentReviewEvent[];
   createdAt: string;
   deliveries?: PublishDelivery[];
 }
@@ -423,6 +489,132 @@ export interface PublishInput {
   channels: PublishInputChannelsItem[];
   /** Must be true after the user has reviewed the selected channels. */
   confirmed: boolean;
+}
+
+export type ContentReviewInputDecision = typeof ContentReviewInputDecision[keyof typeof ContentReviewInputDecision];
+
+
+export const ContentReviewInputDecision = {
+  in_review: 'in_review',
+  changes_requested: 'changes_requested',
+  approved: 'approved',
+} as const;
+
+export interface ContentReviewInput {
+  decision: ContentReviewInputDecision;
+  /**
+     * @minLength 2
+     * @maxLength 120
+     */
+  reviewer?: string;
+  /** @maxLength 1200 */
+  notes?: string;
+  /** Must be true after an operator has reviewed all claims and warnings. */
+  confirmed: boolean;
+}
+
+export type MedicalDossierInputReviewState = typeof MedicalDossierInputReviewState[keyof typeof MedicalDossierInputReviewState];
+
+
+export const MedicalDossierInputReviewState = {
+  needs_evidence: 'needs_evidence',
+  in_review: 'in_review',
+  approved: 'approved',
+  changes_requested: 'changes_requested',
+} as const;
+
+export interface MedicalDossierInput {
+  /**
+     * @minLength 2
+     * @maxLength 200
+     */
+  name: string;
+  /**
+     * @minLength 1
+     * @maxLength 80
+     */
+  volume: string;
+  sourceLinks?: string[];
+  /**
+     * @minLength 10
+     * @maxLength 4000
+     */
+  registrationSafety: string;
+  /**
+     * @items.minLength 3
+     * @items.maxLength 500
+     */
+  approvedClaims?: string[];
+  /**
+     * @items.minLength 2
+     * @items.maxLength 200
+     */
+  audiences?: string[];
+  reviewState: MedicalDossierInputReviewState;
+}
+
+export type MedicalDossierUpdateReviewState = typeof MedicalDossierUpdateReviewState[keyof typeof MedicalDossierUpdateReviewState];
+
+
+export const MedicalDossierUpdateReviewState = {
+  needs_evidence: 'needs_evidence',
+  in_review: 'in_review',
+  approved: 'approved',
+  changes_requested: 'changes_requested',
+} as const;
+
+export interface MedicalDossierUpdate {
+  /**
+     * @minLength 2
+     * @maxLength 200
+     */
+  name?: string;
+  /**
+     * @minLength 1
+     * @maxLength 80
+     */
+  volume?: string;
+  sourceLinks?: string[];
+  /**
+     * @minLength 10
+     * @maxLength 4000
+     */
+  registrationSafety?: string;
+  /**
+     * @items.minLength 3
+     * @items.maxLength 500
+     */
+  approvedClaims?: string[];
+  /**
+     * @items.minLength 2
+     * @items.maxLength 200
+     */
+  audiences?: string[];
+  reviewState?: MedicalDossierUpdateReviewState;
+}
+
+export type MedicalDossierReviewState = typeof MedicalDossierReviewState[keyof typeof MedicalDossierReviewState];
+
+
+export const MedicalDossierReviewState = {
+  needs_evidence: 'needs_evidence',
+  in_review: 'in_review',
+  approved: 'approved',
+  changes_requested: 'changes_requested',
+} as const;
+
+export interface MedicalDossier {
+  id: string;
+  name: string;
+  volume: string;
+  sourceLinks: string[];
+  registrationSafety: string;
+  approvedClaims: string[];
+  audiences: string[];
+  reviewState: MedicalDossierReviewState;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export type BuilderInputKind = typeof BuilderInputKind[keyof typeof BuilderInputKind];

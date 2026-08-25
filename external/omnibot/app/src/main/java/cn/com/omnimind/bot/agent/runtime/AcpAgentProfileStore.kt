@@ -72,6 +72,7 @@ internal data class AcpOfficialRuntime(
 internal const val DEEPSEEK_HARNESS_NPM_CHANNEL = "next"
 internal val DEEPSEEK_HARNESS_NPM_PACKAGE_NAMES = listOf(
     "@deepseek-ai/dsh-acp-demo",
+    "@deepseek-ai/dsh-attachment-local",
     "@deepseek-ai/dsh-llm-deepseek",
     "@deepseek-ai/dsh-sandbox-local",
     "@deepseek-ai/dsh-sandbox-policy",

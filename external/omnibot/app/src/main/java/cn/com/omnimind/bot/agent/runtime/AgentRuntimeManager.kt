@@ -1650,7 +1650,7 @@ private const val DEEPSEEK_HARNESS_OMNIBOT_ACP_PLUGIN_ASSET =
 internal const val DEEPSEEK_HARNESS_OMNIBOT_ACP_PLUGIN_PATH =
     "/root/.npm-global/lib/node_modules/@deepseek-ai/dsh-acp-demo/lib/omnibot-acp-demo.mjs"
 private const val DEEPSEEK_PUBLIC_BASE_URL = "https://api.deepseek.com"
-private const val DEEPSEEK_HARNESS_DEFAULT_MODEL = "deepseek-v4-pro"
+private const val DEEPSEEK_HARNESS_DEFAULT_MODEL = "deepseek-v4-flash-vision-exp"
 private const val DEEPSEEK_HARNESS_DEFAULT_REASONING_EFFORT = "max"
 private const val DEEPSEEK_HARNESS_DEFAULT_PERMISSION_MODE = "workspace-write"
 private val DEEPSEEK_HARNESS_REASONING_EFFORTS = setOf("off", "high", "max")
@@ -2047,7 +2047,7 @@ internal fun buildDeepSeekHarnessCordisConfig(): String = """
       name: '$DEEPSEEK_HARNESS_OMNIBOT_ACP_PLUGIN_PATH'
       config:
         provider: deepseek-official
-        model: !!js "process.env.DSH_MODEL ?? 'deepseek-v4-pro'"
+        model: !!js "process.env.DSH_MODEL ?? 'deepseek-v4-flash-vision-exp'"
         reasoningEffort: !!js "process.env.DSH_REASONING_EFFORT ?? 'max'"
         permissionMode: !!js "process.env.DSH_PERMISSION_MODE ?? 'workspace-write'"
         persistenceRoot: !!js "(process.env.DSH_ACP_HOME ?? '/root/.dsh/omnibot-acp') + '/sessions'"

@@ -1225,7 +1225,16 @@ internal class LocalAcpRuntime(
             val androidPath = attachment.stringValue("path")?.let(::File)
             val isImage = attachment["isImage"] == true ||
                 mimeType.startsWith("image/", ignoreCase = true)
-            if (isImage && capabilities.image && androidPath?.isFile == true) {
+            imageAttachmentInputError(
+                isImage = isImage,
+                supportsImages = capabilities.image
+            )?.let { error ->
+                throw IllegalArgumentException(error)
+            }
+            if (isImage) {
+                require(androidPath?.isFile == true) {
+                    "The image attachment is unavailable. Attach it again and retry."
+                }
                 val encoded = Base64.encodeToString(
                     androidPath.readBytes(),
                     Base64.NO_WRAP
@@ -1517,6 +1526,16 @@ internal class LocalAcpRuntime(
         private const val STALL_DEADLINE_MS = 120_000L
         private const val STALL_CHECK_INTERVAL_MS = 15_000L
     }
+}
+
+internal fun imageAttachmentInputError(
+    isImage: Boolean,
+    supportsImages: Boolean
+): String? = when {
+    isImage && !supportsImages ->
+        "The selected browser agent model does not support image input. " +
+            "Select a vision model, such as deepseek-v4-flash-vision-exp."
+    else -> null
 }
 
 internal enum class AcpPermissionBehavior {

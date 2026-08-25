@@ -53,7 +53,7 @@ const clerkAppearance = {
     logoImageUrl: `${window.location.origin}${basePath}/logo.svg`,
   },
   variables: {
-    colorPrimary: "#10b981",
+    colorPrimary: "#00e5ff",
     colorForeground: "#f4f4f5",
     colorMutedForeground: "#a1a1aa",
     colorDanger: "#ef4444",
@@ -66,25 +66,25 @@ const clerkAppearance = {
   },
   elements: {
     rootBox: "w-full flex justify-center",
-    cardBox: "w-[440px] max-w-full overflow-hidden border border-emerald-500/20 bg-zinc-950/60 backdrop-blur-xl shadow-[0_0_60px_rgba(0,0,0,0.8)] relative before:absolute before:inset-0 before:bg-[linear-gradient(rgba(16,185,129,0.02)_1px,transparent_1px),linear-gradient(90deg,rgba(16,185,129,0.02)_1px,transparent_1px)] before:bg-[size:2rem_2rem] before:pointer-events-none before:z-[-1]",
+    cardBox: "w-[440px] max-w-full overflow-hidden border border-cyan-500/20 bg-zinc-950/60 backdrop-blur-xl shadow-[0_0_60px_rgba(0,0,0,0.8)] relative before:absolute before:inset-0 before:bg-[linear-gradient(rgba(0,229,255,0.02)_1px,transparent_1px),linear-gradient(90deg,rgba(0,229,255,0.02)_1px,transparent_1px)] before:bg-[size:2rem_2rem] before:pointer-events-none before:z-[-1]",
     card: "!shadow-none !border-0 !bg-transparent p-6 sm:p-10 relative z-10",
-    headerTitle: "font-display font-medium text-2xl tracking-widest text-emerald-400 drop-shadow-[0_0_10px_rgba(16,185,129,0.5)] uppercase",
-    headerSubtitle: "text-emerald-500/50 font-mono text-xs uppercase tracking-[0.1em] mt-3",
+    headerTitle: "font-display font-medium text-2xl tracking-widest text-cyan-400 drop-shadow-[0_0_10px_rgba(0,229,255,0.5)] uppercase",
+    headerSubtitle: "text-cyan-500/50 font-mono text-xs uppercase tracking-[0.1em] mt-3",
     socialButtonsBlockButtonText: "text-zinc-300 font-mono text-xs uppercase tracking-widest font-semibold",
-    socialButtonsBlockButton: "border-emerald-500/20 bg-zinc-950/80 hover:bg-emerald-500/10 hover:border-emerald-500/40 transition-all duration-300 rounded-none h-12 shadow-[inset_0_0_20px_rgba(0,0,0,0.5)]",
+    socialButtonsBlockButton: "border-cyan-500/20 bg-zinc-950/80 hover:bg-cyan-500/10 hover:border-cyan-500/40 transition-all duration-300 rounded-none h-12 shadow-[inset_0_0_20px_rgba(0,0,0,0.5)]",
     socialButtonsProviderIcon: "filter brightness-0 invert opacity-70",
-    formFieldLabel: "font-mono uppercase text-[10px] tracking-[0.2em] text-emerald-500/70 mb-2 font-semibold",
-    formFieldInput: "border-emerald-500/20 bg-zinc-950/80 focus:border-emerald-400 focus:ring-1 focus:ring-emerald-400/50 text-emerald-50 rounded-none font-mono text-sm h-12 shadow-[inset_0_2px_10px_rgba(0,0,0,0.5)] transition-all",
-    footerActionLink: "text-emerald-400 font-mono text-xs uppercase tracking-[0.1em] hover:text-emerald-300 hover:drop-shadow-[0_0_8px_rgba(16,185,129,0.8)] transition-all",
-    footerActionText: "text-emerald-500/40 font-mono text-xs uppercase tracking-[0.1em]",
-    dividerText: "text-emerald-500/30 font-mono text-xs uppercase tracking-[0.3em]",
-    dividerLine: "bg-emerald-500/10",
-    formButtonPrimary: "bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 border border-emerald-500/50 hover:border-emerald-400 font-mono text-xs uppercase tracking-[0.2em] font-bold rounded-none h-12 transition-all duration-300 shadow-[0_0_20px_rgba(16,185,129,0.15)] hover:shadow-[0_0_30px_rgba(16,185,129,0.3)] mt-2",
+    formFieldLabel: "font-mono uppercase text-[10px] tracking-[0.2em] text-cyan-500/70 mb-2 font-semibold",
+    formFieldInput: "border-cyan-500/20 bg-zinc-950/80 focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400/50 text-cyan-50 rounded-none font-mono text-sm h-12 shadow-[inset_0_2px_10px_rgba(0,0,0,0.5)] transition-all",
+    footerActionLink: "text-cyan-400 font-mono text-xs uppercase tracking-[0.1em] hover:text-cyan-300 hover:drop-shadow-[0_0_8px_rgba(0,229,255,0.8)] transition-all",
+    footerActionText: "text-cyan-500/40 font-mono text-xs uppercase tracking-[0.1em]",
+    dividerText: "text-cyan-500/30 font-mono text-xs uppercase tracking-[0.3em]",
+    dividerLine: "bg-cyan-500/10",
+    formButtonPrimary: "bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-400 border border-cyan-500/50 hover:border-cyan-400 font-mono text-xs uppercase tracking-[0.2em] font-bold rounded-none h-12 transition-all duration-300 shadow-[0_0_20px_rgba(0,229,255,0.15)] hover:shadow-[0_0_30px_rgba(0,229,255,0.3)] mt-2",
     logoBox: "mb-10 flex justify-start items-center",
-    logoImage: "h-10 w-auto filter drop-shadow-[0_0_15px_rgba(16,185,129,0.8)]",
+    logoImage: "h-10 w-auto filter drop-shadow-[0_0_15px_rgba(0,229,255,0.8)]",
     alert: "border-red-500/30 bg-red-500/10 rounded-none text-red-200 font-mono text-xs",
     alertText: "text-red-200",
-    otpCodeFieldInput: "border-emerald-500/20 bg-zinc-950/80 focus:border-emerald-400 text-emerald-50 rounded-none h-12 font-mono text-xl",
+    otpCodeFieldInput: "border-cyan-500/20 bg-zinc-950/80 focus:border-cyan-400 text-cyan-50 rounded-none h-12 font-mono text-xl",
     formFieldRow: "gap-5",
     main: "gap-6",
     footer: "mt-8",
@@ -116,14 +116,14 @@ function AuthLayout({ children }: { children: ReactNode }) {
       <div className="access-core__backdrop" aria-hidden="true" />
       <div className="access-core__noise" aria-hidden="true" />
       <header className="access-header">
-        <div className="brand-lockup"><span className="brand-mark" aria-hidden="true"><i /><i /><i /></span><span><b>AGENT</b><em>multitool 360</em></span></div>
+        <div className="brand-lockup"><span className="brand-mark" aria-hidden="true"><i /><i /><i /></span><span><b>ZISHEL</b><em>MEDICAL AI</em></span></div>
         <div className="secure-chip"><span /> private operator access</div>
       </header>
       <section className="access-layout" aria-label="Secure workspace access">
         <div className="access-intro">
           <p className="eyebrow"><span className="eyebrow-line" /> CORE / 01</p><h1>Open the<br /><strong>workspace.</strong></h1>
           <p className="intro-copy">One operator. A coordinated fleet. Your next move travels through a room that is already listening.</p>
-          <div className="fleet-list" aria-label="Agent fleet readiness">
+          <div className="fleet-list" aria-label="Zishel fleet readiness">
             {["Analyst", "Builder", "Seller", "Orchestrator"].map((agent, index) => <div className="fleet-agent" key={agent}><span className={`agent-node agent-${index}`}>{agent.slice(0, 2).toUpperCase()}</span><span>{agent}</span><i className="agent-ready" aria-label={`${agent} ready`} /></div>)}
           </div>
         </div>
@@ -141,7 +141,7 @@ function AuthLayout({ children }: { children: ReactNode }) {
           <div className="auth-clerk-panel">{children}</div>
         </div>
       </section>
-      <footer className="access-footer"><span>AM360 / SECURE ACCESS CORE</span><span>LINK LATENCY <b>18ms</b></span><span>BUILD 3.6.0</span></footer>
+      <footer className="access-footer"><span>ZISHEL / SECURE ACCESS CORE</span><span>LINK LATENCY <b>18ms</b></span><span>BUILD 3.6.0</span></footer>
     </div>
   );
 }
@@ -165,7 +165,7 @@ function SignUpPage() {
 function WorkspaceRouter() {
   const { isLoaded, isSignedIn } = useAuth();
   if (!isLoaded) {
-    return <div className="grid min-h-[100dvh] place-items-center bg-zinc-950 font-mono text-xs text-emerald-500 tracking-widest uppercase">ИНИЦИАЛИЗАЦИЯ ЗАЩИЩЁННОГО ПРОСТРАНСТВА</div>;
+    return <div className="grid min-h-[100dvh] place-items-center bg-zinc-950 font-mono text-xs text-cyan-500 tracking-widest uppercase">ИНИЦИАЛИЗАЦИЯ ЗАЩИЩЁННОГО ПРОСТРАНСТВА</div>;
   }
   if (!isSignedIn) return <LandingPage />;
 

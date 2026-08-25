@@ -71,7 +71,31 @@ export const contentItemsTable = pgTable("agent360_content", {
   channels: jsonb("channels").notNull().$type<string[]>(),
   status: text("status").notNull(),
   imageUrl: text("image_url"),
+  format: text("format").notNull().default("expert_post"),
+  dossierId: text("dossier_id"),
+  reviewState: text("review_state").notNull().default("pending"),
+  claimWarnings: jsonb("claim_warnings").notNull().$type<string[]>().default([]),
+  requiresHumanReview: boolean("requires_human_review").notNull().default(false),
+  reviewedBy: text("reviewed_by"),
+  reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+  contentVersion: integer("content_version").notNull().default(1),
+  reviewTrail: jsonb("review_trail").notNull().$type<unknown[]>().default([]),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const medicalDossiersTable = pgTable("agent360_medical_dossiers", {
+  id: text("id").primaryKey(),
+  workspaceId: text("workspace_id").notNull(),
+  name: text("name").notNull(),
+  volume: text("volume").notNull(),
+  sourceLinks: jsonb("source_links").notNull().$type<string[]>().default([]),
+  registrationSafety: text("registration_safety").notNull(),
+  approvedClaims: jsonb("approved_claims").notNull().$type<string[]>().default([]),
+  audiences: jsonb("audiences").notNull().$type<string[]>().default([]),
+  reviewState: text("review_state").notNull().default("needs_evidence"),
+  version: integer("version").notNull().default(1),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const channelConnectionsTable = pgTable("agent360_channel_connections", {
