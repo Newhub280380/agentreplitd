@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname } from "node:path";
+import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { dirname, resolve } from "node:path";
 import { createServer, type Server } from "node:http";
+import { spawn } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { after, before, describe, test } from "node:test";
 import {
   GenerateContentResponse,
@@ -41,6 +44,10 @@ const stripeCheckoutBrowserRegressionEnabled = Number.isFinite(stripeCheckoutBro
 const stripeCheckoutBrowserSessionFile = process.env.STRIPE_CHECKOUT_BROWSER_SESSION_FILE;
 const stripeCheckoutBrowserCompletionFile = process.env.STRIPE_CHECKOUT_BROWSER_COMPLETION_FILE;
 const stripeCheckoutBrowserFailureFile = process.env.STRIPE_CHECKOUT_BROWSER_FAILURE_FILE;
+const releaseRunnerFile = resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  "../../../scripts/src/stripe-webhook-browser-release-test.ts",
+);
 
 let server: Server;
 let baseUrl: string;
@@ -109,6 +116,30 @@ function eventReferencesSubscription(event: Stripe.Event, subscriptionId: string
 
 async function wait(milliseconds: number): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+async function waitForFile(path: string, timeoutMilliseconds: number): Promise<void> {
+  const deadline = Date.now() + timeoutMilliseconds;
+  while (Date.now() < deadline) {
+    try {
+      await readFile(path, "utf8");
+      return;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+    await wait(25);
+  }
+  throw new Error(`Expected marker ${path} within ${timeoutMilliseconds}ms.`);
+}
+
+async function fileExists(path: string): Promise<boolean> {
+  try {
+    await readFile(path, "utf8");
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+    throw error;
+  }
 }
 
 async function waitForHostedCheckoutBrowser({
@@ -329,6 +360,66 @@ after(async () => {
 });
 
 describe("agent 360 authentication and quota regression", () => {
+  test("release runner writes cancellation failure before child cleanup completes", async () => {
+    const runDirectory = await mkdtemp(resolve(tmpdir(), "agent360-release-cancellation-"));
+    const browserWaitStartedFile = resolve(runDirectory, "browser-wait-started");
+    const completionFile = resolve(runDirectory, "cleanup-completed");
+    const failureFile = resolve(runDirectory, "release-failed");
+    const childScript = [
+      "const { mkdir, writeFile } = require('node:fs/promises');",
+      "const { dirname } = require('node:path');",
+      "(async () => {",
+      "  await mkdir(dirname(process.env.STRIPE_CHECKOUT_BROWSER_WAIT_STARTED_FILE), { recursive: true });",
+      "  await writeFile(process.env.STRIPE_CHECKOUT_BROWSER_WAIT_STARTED_FILE, 'browser wait started');",
+      "  await new Promise((resolve) => setTimeout(resolve, 1000));",
+      "  await writeFile(process.env.STRIPE_CHECKOUT_BROWSER_COMPLETION_FILE, 'child cleanup completed');",
+      "})().catch((error) => { console.error(error); process.exitCode = 1; });",
+    ].join("\n");
+    const runner = spawn(
+      process.execPath,
+      ["--import", "tsx/esm", releaseRunnerFile],
+      {
+        cwd: resolve(dirname(fileURLToPath(import.meta.url)), "../../../scripts"),
+        env: {
+          ...process.env,
+          NODE_ENV: "test",
+          STRIPE_CHECKOUT_BROWSER_SESSION_FILE: resolve(runDirectory, "sessions.json"),
+          STRIPE_CHECKOUT_BROWSER_COMPLETION_FILE: completionFile,
+          STRIPE_CHECKOUT_BROWSER_FAILURE_FILE: failureFile,
+          STRIPE_CHECKOUT_BROWSER_RELEASE_CHILD_COMMAND: JSON.stringify({
+            command: process.execPath,
+            args: ["-e", childScript],
+          }),
+          STRIPE_CHECKOUT_BROWSER_WAIT_STARTED_FILE: browserWaitStartedFile,
+        },
+        stdio: "ignore",
+      },
+    );
+    const runnerExit = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>(
+      (resolveExit, reject) => {
+        runner.once("error", reject);
+        runner.once("exit", (code, signal) => resolveExit({ code, signal }));
+      },
+    );
+
+    try {
+      await waitForFile(browserWaitStartedFile, 5_000);
+      assert.equal(runner.kill("SIGTERM"), true);
+      await waitForFile(failureFile, 2_000);
+      assert.equal(await fileExists(completionFile), false);
+
+      const result = await runnerExit;
+      assert.equal(result.signal, null);
+      assert.notEqual(result.code, 0);
+      await waitForFile(completionFile, 2_000);
+    } finally {
+      if (runner.exitCode === null && runner.signalCode === null) {
+        runner.kill("SIGKILL");
+      }
+      await rm(runDirectory, { recursive: true, force: true });
+    }
+  });
+
   test("reuses one Stripe product and price during parallel catalog creation", async () => {
     const products: Array<{ id: string; created: number; metadata: { agent360_plan: string } }> = [];
     const prices: Array<{
