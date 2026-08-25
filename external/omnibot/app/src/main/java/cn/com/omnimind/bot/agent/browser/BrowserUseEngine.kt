@@ -96,6 +96,11 @@ private const val FIND_ELEMENTS_LIMIT = 60
 private const val TYPE_INPUT_CHUNK_SIZE = 3
 private const val TYPE_INPUT_CHUNK_DELAY_MS = 35L
 
+internal object BrowserPreviewEncodingPolicy {
+    val dispatcher
+        get() = Dispatchers.IO
+}
+
 enum class BrowserUserAgentProfile(
     val wireName: String,
     val userAgentString: String
@@ -1231,7 +1236,7 @@ class BrowserUseEngine(
             ?: return unavailableSnapshot(workspaceId = workspaceId)
         activeTabId = tab.tabId
         val (vpWidth, vpHeight) = viewportDimensionsForProfile(tab.userAgentProfile)
-        return withContext(Dispatchers.Main.immediate) {
+        val (bitmap, captureWidth, captureHeight) = withContext(Dispatchers.Main.immediate) {
             val (captureWidth, captureHeight) = layoutWebView(tab.webView, vpWidth, vpHeight)
             if (tab.webView.windowToken == null) {
                 tab.webView.setLayerType(View.LAYER_TYPE_SOFTWARE, null)
@@ -1244,20 +1249,26 @@ class BrowserUseEngine(
             val canvas = Canvas(bitmap)
             canvas.drawColor(Color.WHITE)
             tab.webView.draw(canvas)
-            val imageDataUrl = bitmapToDataUrl(bitmap, maxWidth, quality)
-            bitmap.recycle()
-            linkedMapOf(
-                "available" to true,
-                "workspaceId" to workspaceId,
-                "activeTabId" to tab.tabId,
-                "currentUrl" to (tab.currentUrl ?: ""),
-                "title" to (tab.title ?: ""),
-                "isLoading" to tab.isLoading,
-                "imageDataUrl" to imageDataUrl,
-                "imageWidth" to captureWidth,
-                "imageHeight" to captureHeight
-            )
+            Triple(bitmap, captureWidth, captureHeight)
         }
+        val imageDataUrl = try {
+            withContext(BrowserPreviewEncodingPolicy.dispatcher) {
+                bitmapToDataUrl(bitmap, maxWidth, quality)
+            }
+        } finally {
+            bitmap.recycle()
+        }
+        return linkedMapOf(
+            "available" to true,
+            "workspaceId" to workspaceId,
+            "activeTabId" to tab.tabId,
+            "currentUrl" to (tab.currentUrl ?: ""),
+            "title" to (tab.title ?: ""),
+            "isLoading" to tab.isLoading,
+            "imageDataUrl" to imageDataUrl,
+            "imageWidth" to captureWidth,
+            "imageHeight" to captureHeight
+        )
     }
 
     fun attachActiveTabTo(

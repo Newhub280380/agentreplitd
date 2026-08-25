@@ -1,0 +1,16 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "S2btopJYBbNmZ5zZHucSK"
+uri = "file://deliverables/omnibot-develop-standard-debug.apk.xz"
+type = "unspecified"
+title = "OmniBot Android APK (compressed)"
+description = "96 MB XZ transfer archive. Extract it to recover the v2-signed Samsung/arm64 OmniBot debug APK (164 MB)."
+logical_id = "538fc1ca-599b-4e69-bcf9-f34cb86f4621"
+content_hash = "sha256:b1cae171e65661ec6120cb961f94219e934a5852c0b83786cc8c858e87d6a1e2"
+size = 96233980
+mtime_ms = 1787667438892
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:4cbbdb66-5720-4c48-93c1-689218f4a3eb/538fc1ca-599b-4e69-bcf9-f34cb86f4621/210c697c-3c9b-4863-9f13-49c7ad262276"
+storage_version_token = "1787667452786872"
+content_type = "application/octet-stream"

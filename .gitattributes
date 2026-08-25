@@ -1,0 +1,4 @@
+deliverables/omnibot-develop-standard-debug.apk.xz filter=lfs diff=lfs merge=lfs -text
+external/omnibot/.gradle-review-cache/caches/8.14/generated-gradle-jars/gradle-api-8.14.jar filter=lfs diff=lfs merge=lfs -text
+external/omnibot/.gradle-review-cache/wrapper/dists/gradle-8.14-bin/38aieal9i53h9rfe7vjup95b9/gradle-8.14-bin.zip filter=lfs diff=lfs merge=lfs -text
+external/omnibot/.gradle-review-cache/wrapper/dists/gradle-8.14-bin/38aieal9i53h9rfe7vjup95b9/gradle-8.14/lib/kotlin-compiler-embeddable-2.0.21.jar filter=lfs diff=lfs merge=lfs -text
