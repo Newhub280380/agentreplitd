@@ -424,6 +424,95 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "404":
           description: Content not found
+  /content/{id}/review:
+    post:
+      operationId: reviewContent
+      tags: [content]
+      summary: Record a human review decision for governed medical content
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ContentReviewInput"
+      responses:
+        "200":
+          description: Content with updated review state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContentItem"
+        "400":
+          description: Invalid review confirmation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Content not found
+  /medical/dossiers:
+    get:
+      operationId: getMedicalDossiers
+      tags: [medical]
+      summary: List governed medical product dossiers in the signed-in workspace
+      responses:
+        "200":
+          description: Workspace product dossiers
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MedicalDossier"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      operationId: createMedicalDossier
+      tags: [medical]
+      summary: Create a governed medical product dossier
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MedicalDossierInput"
+      responses:
+        "201":
+          description: Created dossier
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MedicalDossier"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /medical/dossiers/{id}:
+    patch:
+      operationId: updateMedicalDossier
+      tags: [medical]
+      summary: Update a workspace-owned medical product dossier
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MedicalDossierUpdate"
+      responses:
+        "200":
+          description: Updated dossier
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MedicalDossier"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Dossier not found
   /builder/jobs:
     get:
       operationId: getBuilderJobs
@@ -712,9 +801,13 @@ components:
           type: array
           items: { type: string, enum: [telegram, vk, instagram] }
         tone: { type: string }
+        dossierId: { type: string }
+        format:
+          type: string
+          enum: [expert_post, product_card, reels_brief, sales_message]
     ContentItem:
       type: object
-      required: [id, title, body, channels, status, createdAt]
+      required: [id, title, body, channels, status, imageUrl, format, dossierId, reviewState, claimWarnings, requiresHumanReview, reviewedBy, reviewedAt, contentVersion, reviewTrail, createdAt]
       properties:
         id: { type: string }
         title: { type: string }
@@ -722,8 +815,22 @@ components:
         channels:
           type: array
           items: { type: string }
-        status: { type: string, enum: [draft, scheduled, publishing, published, partial, failed] }
+        status: { type: string, enum: [draft, in_review, changes_requested, approved, scheduled, publishing, published, partial, failed] }
         imageUrl: { type: ["string", "null"] }
+        format: { type: string, enum: [expert_post, product_card, reels_brief, sales_message] }
+        dossierId: { type: ["string", "null"] }
+        reviewState: { type: string, enum: [pending, in_review, changes_requested, approved] }
+        claimWarnings:
+          type: array
+          items: { type: string }
+        requiresHumanReview: { type: boolean }
+        reviewedBy: { type: ["string", "null"] }
+        reviewedAt: { type: ["string", "null"], format: date-time }
+        contentVersion: { type: number }
+        reviewTrail:
+          type: array
+          items:
+            $ref: "#/components/schemas/ContentReviewEvent"
         createdAt: { type: string, format: date-time }
         deliveries:
           type: array
@@ -741,6 +848,82 @@ components:
         confirmed:
           type: boolean
           description: Must be true after the user has reviewed the selected channels.
+    ContentReviewInput:
+      type: object
+      required: [decision, confirmed]
+      properties:
+        decision: { type: string, enum: [in_review, changes_requested, approved] }
+        reviewer: { type: string, minLength: 2, maxLength: 120 }
+        notes: { type: string, maxLength: 1200 }
+        confirmed:
+          type: boolean
+          description: Must be true after an operator has reviewed all claims and warnings.
+    ContentReviewEvent:
+      type: object
+      required: [decision, reviewer, notes, attested, version, createdAt]
+      properties:
+        decision: { type: string, enum: [in_review, changes_requested, approved] }
+        reviewer: { type: string }
+        notes: { type: string }
+        attested:
+          type: boolean
+          description: Reviewer explicitly acknowledged the decision and evidence review.
+        version: { type: number }
+        createdAt: { type: string, format: date-time }
+    MedicalDossierInput:
+      type: object
+      required: [name, volume, registrationSafety, reviewState]
+      properties:
+        name: { type: string, minLength: 2, maxLength: 200 }
+        volume: { type: string, minLength: 1, maxLength: 80 }
+        sourceLinks:
+          type: array
+          items: { type: string }
+        registrationSafety: { type: string, minLength: 10, maxLength: 4000 }
+        approvedClaims:
+          type: array
+          items: { type: string, minLength: 3, maxLength: 500 }
+        audiences:
+          type: array
+          items: { type: string, minLength: 2, maxLength: 200 }
+        reviewState: { type: string, enum: [needs_evidence, in_review, approved, changes_requested] }
+    MedicalDossierUpdate:
+      type: object
+      properties:
+        name: { type: string, minLength: 2, maxLength: 200 }
+        volume: { type: string, minLength: 1, maxLength: 80 }
+        sourceLinks:
+          type: array
+          items: { type: string }
+        registrationSafety: { type: string, minLength: 10, maxLength: 4000 }
+        approvedClaims:
+          type: array
+          items: { type: string, minLength: 3, maxLength: 500 }
+        audiences:
+          type: array
+          items: { type: string, minLength: 2, maxLength: 200 }
+        reviewState: { type: string, enum: [needs_evidence, in_review, approved, changes_requested] }
+    MedicalDossier:
+      type: object
+      required: [id, name, volume, sourceLinks, registrationSafety, approvedClaims, audiences, reviewState, version, createdAt, updatedAt]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        volume: { type: string }
+        sourceLinks:
+          type: array
+          items: { type: string }
+        registrationSafety: { type: string }
+        approvedClaims:
+          type: array
+          items: { type: string }
+        audiences:
+          type: array
+          items: { type: string }
+        reviewState: { type: string, enum: [needs_evidence, in_review, approved, changes_requested] }
+        version: { type: number }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
     PublishDelivery:
       type: object
       required: [channel, target, status, detail, externalId]

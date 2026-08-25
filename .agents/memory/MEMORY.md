@@ -8,3 +8,4 @@
 - [PWA workspace data safety](pwa-workspace-data-safety.md) — keep the service worker away from authenticated API and Clerk responses to protect workspace isolation.
 - [Post-merge Drizzle safety](post-merge-drizzle-safety.md) — exclude runtime-only migration ledgers so dev schema sync does not interpret them as deletions.
 - [OmniBot Android build runtime](omnibot-android-build-runtime.md) — Android builds need a JIT-safe JVM mode and workspace-backed Gradle cache in this environment.
+- [Medical content governance](medical-content-governance.md) — medical drafts need hard policy gates and an attested reviewer decision, not warnings alone.

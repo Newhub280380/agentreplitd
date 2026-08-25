@@ -9,6 +9,7 @@ import {
   contentItemsTable,
   db,
   insightsTable,
+  medicalDossiersTable,
   publishDeliveriesTable,
   stripeEventsTable,
   workspaceUsageTable,
@@ -617,8 +618,158 @@ export async function getContent(workspaceId: string) {
     .orderBy(desc(contentItemsTable.createdAt));
 }
 
+type MedicalDossierInput = {
+  name: string;
+  volume: string;
+  sourceLinks?: string[];
+  registrationSafety: string;
+  approvedClaims?: string[];
+  audiences?: string[];
+  reviewState: "needs_evidence" | "in_review" | "approved" | "changes_requested";
+};
+
+type MedicalDossierUpdate = Partial<MedicalDossierInput>;
+type ContentReviewInput = {
+  decision: "in_review" | "changes_requested" | "approved";
+  reviewer?: string;
+  notes?: string;
+};
+
+export async function getMedicalDossiers(workspaceId: string) {
+  return db
+    .select()
+    .from(medicalDossiersTable)
+    .where(eq(medicalDossiersTable.workspaceId, workspaceId))
+    .orderBy(desc(medicalDossiersTable.updatedAt));
+}
+
+export async function createMedicalDossier(workspaceId: string, input: MedicalDossierInput) {
+  const createdAt = now();
+  const [dossier] = await db
+    .insert(medicalDossiersTable)
+    .values({
+      id: id("dossier"),
+      workspaceId,
+      name: input.name.trim(),
+      volume: input.volume.trim(),
+      sourceLinks: input.sourceLinks ?? [],
+      registrationSafety: input.registrationSafety.trim(),
+      approvedClaims: input.approvedClaims ?? [],
+      audiences: input.audiences ?? [],
+      reviewState: input.reviewState,
+      version: 1,
+      createdAt,
+      updatedAt: createdAt,
+    })
+    .returning();
+  await addActivity(workspaceId, "Продавец", "Создал dossier продукта", `${dossier.name} · ${dossier.volume}`, "success");
+  return dossier;
+}
+
+export async function updateMedicalDossier(
+  workspaceId: string,
+  dossierId: string,
+  input: MedicalDossierUpdate,
+) {
+  const [dossier] = await db
+    .update(medicalDossiersTable)
+    .set({
+      ...input,
+      updatedAt: now(),
+      version: sql`${medicalDossiersTable.version} + 1`,
+    })
+    .where(and(
+      eq(medicalDossiersTable.workspaceId, workspaceId),
+      eq(medicalDossiersTable.id, dossierId),
+    ))
+    .returning();
+  if (dossier) {
+    await addActivity(workspaceId, "Продавец", "Обновил dossier продукта", `${dossier.name} · версия ${dossier.version}`, "success");
+  }
+  return dossier ?? null;
+}
+
+const namedPerson = String.raw`(?:[А-ЯЁ][а-яё-]{1,}|[A-Z][a-z-]{1,})`;
+const namedPersonMedicalRequest = new RegExp(
+  String.raw`(?:[Пп]одбер\w*|[Рр]екоменд\w*|[Пп]редлож\w*|[Оо]предел\w*|[Оо]цен\w*|[Нн]азнач\w*|[Rr]ecommend\w*|[Ss]uggest\w*|[Dd]etermine\w*|[Aa]ssess\w*|[Pp]rescrib\w*)[\s\S]{0,120}(?:для|for)\s+${namedPerson}|(?:[Dd]etermine|[Aa]ssess|[Оо]предел\w*|[Оо]цен\w*)\s+(?:whether\s+)?${namedPerson}\s+(?:has|have|is|есть|имеет)`,
+  "u",
+);
+
+const prohibitedMedicalPolicy = [
+  { label: "диагнозы или определение заболевания", expression: /(диагноз\w*|заболев\w*|болезн\w*|патолог\w*|симптом\w*|определ\w*.*(состояни|болезн|заболев|патолог)|выяв\w*.*(болезн|заболев|патолог)|diagnos(?:is|tic)?|disease|condition|symptom|identif\w*.*(disease|condition))/i },
+  { label: "назначения или лечение", expression: /(назнач\w*|лечени\w*|\bprescrib\w*|\btreat(?:ment|s|ing)?\b)/i },
+  { label: "дозировки или инъекции", expression: /(дозиров\w*|инъекц\w*|\bdos(?:e|age|ing)\b|\binject\w*)/i },
+  { label: "персональные рекомендации или процедуры для пациента", expression: /(пациент\w*|конкретн\w*.*(человек|клиент|лиц)|индивидуальн\w*.*(процедур|рекоменд)|patient[- ]specific|individuali[sz]ed (procedure|recommendation)|your patient|for a specific person)/i },
+  { label: "персонализированные запросы для именованного человека", expression: namedPersonMedicalRequest },
+  { label: "гарантированные клинические результаты", expression: /(гарант\w*.*(результат|эффект)|клиническ\w*.*(результат|исход)|излеч\w*|обеспеч\w*.*(результат|эффект)|обеща\w*.*(результат|эффект)|улучш\w*.*(состояни|кож|лиц|внешност)|измен\w*.*(состояни|кож|лиц|внешност)|\bguarantee\w*.*(outcome|result|effect)|\bensure\w*.*(outcome|result|effect)|\bpromise\w*.*(outcome|result|effect)|\bimprov\w*.*(skin|face|condition|outcome)|\btransform\w*.*(skin|face|condition|outcome)|\bclinical outcome\b|\bcure[sd]?\b)/i },
+] as const;
+
+export function medicalPolicyViolations(values: ReadonlyArray<string | null | undefined>): string[] {
+  const source = values.filter((value): value is string => Boolean(value)).join("\n");
+  return prohibitedMedicalPolicy
+    .filter(({ expression }) => expression.test(source))
+    .map(({ label }) => label);
+}
+
+function claimWarningsFor(
+  topic: string,
+  dossier: typeof medicalDossiersTable.$inferSelect | null,
+): string[] {
+  const warnings: string[] = [];
+  if (!dossier) warnings.push("Черновик не привязан к dossier: добавьте проверяемую evidence basis до approval.");
+  if (dossier && !dossier.approvedClaims.length) warnings.push("В dossier нет утверждённых claims: перед использованием добавьте проверяемые формулировки.");
+  if (dossier && dossier.reviewState !== "approved") warnings.push("Dossier не утверждён: сначала завершите evidence review продукта.");
+  if (/(пациент|диагноз|лечен|назнач|дозир|инъекц|процедур|беремен)/i.test(topic)) {
+    warnings.push("Запрос затрагивает клиническое или пациент-специфическое применение. Нужна проверка лицензированным специалистом.");
+  }
+  return warnings;
+}
+
+const medicalSafetyDisclosure = "Материал предназначен для лицензированных специалистов. Это не диагноз, не назначение, не гарантия клинического результата и не инструкция для пациентов. Перед использованием требуется человеческая проверка.";
+
+function contentPolicyViolations(title: string, body: string): string[] {
+  return medicalPolicyViolations([title, body.replaceAll(medicalSafetyDisclosure, "")]);
+}
+
+function governedContentBody(
+  format: "expert_post" | "product_card" | "reels_brief" | "sales_message",
+  topic: string,
+  tone: string | undefined,
+  dossier: typeof medicalDossiersTable.$inferSelect | null,
+): string {
+  const product = dossier ? `${dossier.name} · ${dossier.volume}` : "выбранный продукт";
+  const claimLine = dossier?.approvedClaims.length
+    ? `Разрешённые формулировки: ${dossier.approvedClaims.join("; ")}.`
+    : "Используйте только формулировки из утверждённого dossier; не добавляйте клинические обещания.";
+  const formatCopy = {
+    expert_post: `Тема для профессионального обсуждения: ${topic}.\n\nСформулируйте практический контекст для лицензированных специалистов и предложите свериться с документацией продукта.`,
+    product_card: `${product}\n\nКраткая карточка по теме «${topic}»: позиционирование, происхождение утверждённых фактов и следующий безопасный шаг — запросить dossier.`,
+    reels_brief: `Reels brief: первые 2 секунды — «${topic}»; затем факт из dossier, визуальная ссылка на источник и CTA «проверить с медицинским специалистом».`,
+    sales_message: `Здравствуйте! По теме «${topic}» подготовлен материал о ${product}. Можем отправить dossier с источниками и утверждёнными claims для профессионального ознакомления.`,
+  }[format];
+  return [
+    formatCopy,
+    claimLine,
+    `Тон: ${tone ?? "уверенный, доброжелательный, профессиональный"}.`,
+    medicalSafetyDisclosure,
+  ].join("\n\n");
+}
+
 function toConnectionStatus(connection: typeof channelConnectionsTable.$inferSelect) {
   const provider = connection.provider as ChannelProvider;
+  if (provider === "instagram") {
+    return {
+      id: connection.id,
+      provider: channelDefinitions[provider].provider,
+      category: "channel" as const,
+      status: "unavailable" as const,
+      detail: "Интеграция Instagram пока недоступна. Existing credential не используется для delivery.",
+      channel: provider,
+      target: connection.target,
+      lastCheckedAt: connection.lastCheckedAt,
+      canDisconnect: false,
+    };
+  }
   const credentialAvailable = Boolean(decryptCredential(connection.credentialCiphertext));
   const status = credentialAvailable && connection.status === "connected" ? "connected" : "needs_setup";
   return {
@@ -644,6 +795,19 @@ export async function getConnections(workspaceId: string) {
   const channels = (Object.keys(channelDefinitions) as ChannelProvider[]).map((provider) => {
     const connection = savedByProvider.get(provider);
     if (connection) return toConnectionStatus(connection);
+    if (provider === "instagram") {
+      return {
+        id: `available-${provider}`,
+        provider: channelDefinitions[provider].provider,
+        category: "channel" as const,
+        status: "unavailable" as const,
+        detail: "Интеграция Instagram появится после отдельного запуска Meta workflow.",
+        channel: provider,
+        target: null,
+        lastCheckedAt: null,
+        canDisconnect: false,
+      };
+    }
     return {
       id: `available-${provider}`,
       provider: channelDefinitions[provider].provider,
@@ -806,40 +970,116 @@ export async function createContent(
   topic: string,
   channels: string[],
   tone?: string,
+  dossierId?: string,
+  format: "expert_post" | "product_card" | "reels_brief" | "sales_message" = "expert_post",
 ) {
+  const dossierIdValue = dossierId?.trim() || null;
+  const [dossier] = dossierIdValue
+    ? await db
+      .select()
+      .from(medicalDossiersTable)
+      .where(and(eq(medicalDossiersTable.workspaceId, workspaceId), eq(medicalDossiersTable.id, dossierIdValue)))
+    : [null];
+  if (dossierIdValue && !dossier) return { error: "dossier_not_found" as const };
+  const claimWarnings = claimWarningsFor(topic, dossier);
+  const createdAt = now();
+  const title = `${format === "expert_post" ? "Экспертный материал" : format === "product_card" ? "Карточка продукта" : format === "reels_brief" ? "Reels brief" : "Sales message"}: ${topic}`;
+  const body = governedContentBody(format, topic, tone, dossier);
+  const policyViolations = contentPolicyViolations(title, body);
+  if (policyViolations.length) return { error: "unsafe_medical_content" as const, violations: policyViolations };
   if (!(await consumeQuota(workspaceId, planId, "content"))) return null;
   const item = {
     id: id("content"),
     workspaceId,
-    title: `Контент: ${topic}`,
-    body: [
-      `«${topic}» — не ещё одна задача в списке, а точка роста.`,
-      "Мы собрали сигнал рынка, выделили барьер клиента и сформулировали действие, которое можно проверить уже сегодня.",
-      `Тон: ${tone ?? "уверенный и полезный"}. Напишите, если нужен разбор под ваш продукт.`,
-    ].join("\n\n"),
+    title,
+    body,
     channels,
     status: "draft",
     imageUrl: null,
-    createdAt: now(),
+    format,
+    dossierId: dossierIdValue,
+    reviewState: "pending",
+    claimWarnings,
+    requiresHumanReview: true,
+    reviewedBy: null,
+    reviewedAt: null,
+    contentVersion: 1,
+    reviewTrail: [],
+    createdAt,
   };
   await db.insert(contentItemsTable).values(item);
-  await addActivity(workspaceId, "Продавец", "Сгенерировал черновик", item.title, "success");
+  await addActivity(workspaceId, "Продавец", "Сгенерировал medical-черновик", item.title, claimWarnings.length ? "warning" : "success");
   return item;
+}
+
+export async function reviewContent(workspaceId: string, idValue: string, input: ContentReviewInput) {
+  const [candidate] = await db
+    .select()
+    .from(contentItemsTable)
+    .where(and(eq(contentItemsTable.workspaceId, workspaceId), eq(contentItemsTable.id, idValue)));
+  if (!candidate) return null;
+  if (!input.reviewer?.trim()) return { error: "reviewer_required" as const };
+  const policyViolations = contentPolicyViolations(candidate.title, candidate.body);
+  if (policyViolations.length) return { error: "unsafe_medical_content" as const, violations: policyViolations };
+  if (input.decision === "approved" && candidate.claimWarnings.length > 0) {
+    return { error: "unresolved_claim_warnings" as const };
+  }
+  const createdAt = now();
+  const reviewer = input.reviewer.trim();
+  const reviewTrail = Array.isArray(candidate.reviewTrail) ? candidate.reviewTrail : [];
+  const event = {
+    decision: input.decision,
+    reviewer,
+    notes: input.notes?.trim() || "Решение зафиксировано оператором.",
+    attested: true,
+    version: candidate.contentVersion,
+    createdAt: createdAt.toISOString(),
+  };
+  const [updated] = await db
+    .update(contentItemsTable)
+    .set({
+      status: input.decision,
+      reviewState: input.decision,
+      reviewedBy: reviewer,
+      reviewedAt: createdAt,
+      reviewTrail: [...reviewTrail, event],
+    })
+    .where(and(eq(contentItemsTable.workspaceId, workspaceId), eq(contentItemsTable.id, idValue)))
+    .returning();
+  await addActivity(
+    workspaceId,
+    "Продавец",
+    input.decision === "approved" ? "Материал одобрен оператором" : "Обновлено review-состояние материала",
+    `${updated.title} · v${updated.contentVersion}`,
+    input.decision === "approved" ? "success" : "warning",
+  );
+  return updated;
 }
 
 export async function publishContent(workspaceId: string, idValue: string, channels: string[]) {
   const [candidate] = await db
-    .select({ id: contentItemsTable.id, status: contentItemsTable.status, channels: contentItemsTable.channels })
+    .select({
+      id: contentItemsTable.id,
+      title: contentItemsTable.title,
+      body: contentItemsTable.body,
+      status: contentItemsTable.status,
+      channels: contentItemsTable.channels,
+      reviewState: contentItemsTable.reviewState,
+    })
     .from(contentItemsTable)
     .where(and(eq(contentItemsTable.workspaceId, workspaceId), eq(contentItemsTable.id, idValue)));
   if (!candidate) return null;
-  if (candidate.status !== "draft") return { error: "only_drafts", channels: [] as string[] };
   if (new Set(channels).size !== channels.length) {
     return { error: "duplicate_channels", channels: [] as string[] };
   }
   const invalidChannels = channels.filter((channel) => !candidate.channels.includes(channel));
   if (invalidChannels.length > 0) {
     return { error: "channel_not_selected", channels: invalidChannels };
+  }
+  const policyViolations = contentPolicyViolations(candidate.title, candidate.body);
+  if (policyViolations.length) return { error: "unsafe_medical_content" as const, violations: policyViolations };
+  if (candidate.status !== "approved" || candidate.reviewState !== "approved") {
+    return { error: "requires_review", channels: [] as string[] };
   }
 
   const [existing] = await db
@@ -849,7 +1089,7 @@ export async function publishContent(workspaceId: string, idValue: string, chann
       and(
         eq(contentItemsTable.workspaceId, workspaceId),
         eq(contentItemsTable.id, idValue),
-        eq(contentItemsTable.status, "draft"),
+        eq(contentItemsTable.status, "approved"),
       ),
     )
     .returning();
@@ -858,7 +1098,7 @@ export async function publishContent(workspaceId: string, idValue: string, chann
       .select({ id: contentItemsTable.id })
       .from(contentItemsTable)
       .where(and(eq(contentItemsTable.workspaceId, workspaceId), eq(contentItemsTable.id, idValue)));
-    return matching ? { error: "only_drafts", channels: [] as string[] } : null;
+    return matching ? { error: "requires_review", channels: [] as string[] } : null;
   }
 
   const connections = await db
@@ -873,6 +1113,7 @@ export async function publishContent(workspaceId: string, idValue: string, chann
       }))
       .filter(({ connection, credential }) => (
         connection.status === "connected"
+        && connection.provider !== "instagram"
         && isSupportedChannel(connection.provider)
         && credential !== null
       ))
@@ -882,7 +1123,7 @@ export async function publishContent(workspaceId: string, idValue: string, chann
   if (missingChannels.length > 0) {
     await db
       .update(contentItemsTable)
-      .set({ status: "draft" })
+      .set({ status: "approved" })
       .where(and(eq(contentItemsTable.workspaceId, workspaceId), eq(contentItemsTable.id, idValue)));
     await addActivity(
       workspaceId,

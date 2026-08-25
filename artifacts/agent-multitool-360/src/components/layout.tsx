@@ -11,15 +11,15 @@ import "@/styles/workspace-accessibility.css"
 const navigation = [
   { href: "/", label: "Command", icon: TerminalSquare },
   { href: "/analytics", label: "Analytics", icon: BarChart3 },
-  { href: "/content", label: "Content", icon: Send },
+  { href: "/content", label: "Studio & Dossiers", icon: Send },
   { href: "/builder", label: "Builder", icon: Layers3 },
   { href: "/settings", label: "Settings", icon: Settings2 },
 ]
 const pageLabels: Record<string, { eyebrow: string; title: string }> = {
-  "/analytics": { eyebrow: "02 / SIGNAL INTELLIGENCE", title: "Analytics field" },
-  "/content": { eyebrow: "03 / DISTRIBUTION", title: "Content workstream" },
-  "/builder": { eyebrow: "04 / SYSTEMS", title: "Builder studio" },
-  "/settings": { eyebrow: "05 / CONTROL PLANE", title: "Workspace settings" },
+  "/analytics": { eyebrow: "02 / CLINICAL INTELLIGENCE", title: "Analytics Field" },
+  "/content": { eyebrow: "03 / GOVERNANCE", title: "Medical Studio" },
+  "/builder": { eyebrow: "04 / SYSTEMS", title: "Protocol Builder" },
+  "/settings": { eyebrow: "05 / CONTROL PLANE", title: "Workspace Settings" },
 }
 
 function NavItem({ href, icon: Icon, children, onNavigate }: { href: string; icon: typeof Activity; children: ReactNode; onNavigate: () => void }) {
@@ -37,7 +37,7 @@ export function Layout({ children }: { children: ReactNode }) {
   const railRef = useRef<HTMLElement>(null)
   const menuTriggerRef = useRef<HTMLButtonElement>(null)
   const wasMobileOpen = useRef(false)
-  const displayName = user?.fullName || user?.primaryEmailAddress?.emailAddress || "Оператор"
+  const displayName = user?.fullName || user?.primaryEmailAddress?.emailAddress || "Operator"
   const page = pageLabels[location] ?? { eyebrow: "CONTROL PLANE", title: "Workspace" }
   const close = () => setMobileOpen(false)
   const isModalNav = isMobile && mobileOpen
@@ -80,14 +80,14 @@ export function Layout({ children }: { children: ReactNode }) {
 
   return <div className="workspace-shell">
     <aside ref={railRef} className={cn("workspace-rail", mobileOpen && "is-open")} aria-label="Workspace navigation" aria-hidden={isMobile && !mobileOpen}>
-      <div className="workspace-brand"><span className="workspace-mark"><Activity /></span><span>AGENT <b>360</b></span><button type="button" className="workspace-close" onClick={close} aria-label="Close navigation" data-testid="button-close-workspace-navigation"><X /></button></div>
-      <p className="workspace-nav-label">Control plane</p>
+      <div className="workspace-brand"><span className="workspace-mark text-cyan-400"><Activity /></span><span className="font-display tracking-widest text-sm">ZISHEL <b>MED</b></span><button type="button" className="workspace-close" onClick={close} aria-label="Close navigation" data-testid="button-close-workspace-navigation"><X /></button></div>
+      <p className="workspace-nav-label text-cyan-400">Command Plane</p>
       <nav>{navigation.map(({ href, label, icon }) => <NavItem key={href} href={href} icon={icon} onNavigate={close}>{label}</NavItem>)}</nav>
-      <div className="workspace-account"><div className="workspace-identity"><span>{displayName.slice(0, 1).toUpperCase()}</span><div><b data-testid="text-workspace-operator">{displayName}</b><small>authenticated operator</small></div></div><button type="button" onClick={() => signOut({ redirectUrl: import.meta.env.BASE_URL })} data-testid="button-workspace-sign-out">Выйти</button></div>
+      <div className="workspace-account"><div className="workspace-identity"><span className="bg-zinc-800 text-cyan-400 font-bold">{displayName.slice(0, 1).toUpperCase()}</span><div><b data-testid="text-workspace-operator" className="text-zinc-200">{displayName}</b><small className="text-zinc-500">licensed operator</small></div></div><button type="button" onClick={() => signOut({ redirectUrl: import.meta.env.BASE_URL })} data-testid="button-workspace-sign-out" className="hover:text-cyan-400 transition-colors">Выйти</button></div>
     </aside>
     {mobileOpen && <button type="button" className="workspace-scrim" onClick={close} aria-label="Close navigation" data-testid="button-workspace-navigation-scrim" />}
     <main className="workspace-main" inert={isModalNav}>
-      <header className="workspace-header"><div className="workspace-title"><button ref={menuTriggerRef} type="button" className="workspace-menu" onClick={() => setMobileOpen(true)} aria-label="Open navigation" data-testid="button-open-workspace-navigation"><Menu /></button><div><p>{page.eyebrow}</p><h1>{page.title}</h1></div></div><div className="workspace-health" role="status" aria-label={healthState.description} data-testid="status-workspace-health"><span className={healthState.className} /> <b>{healthState.label}</b><small>system link</small></div></header>
+      <header className="workspace-header"><div className="workspace-title"><button ref={menuTriggerRef} type="button" className="workspace-menu" onClick={() => setMobileOpen(true)} aria-label="Open navigation" data-testid="button-open-workspace-navigation"><Menu /></button><div><p className="text-cyan-400 font-bold tracking-widest">{page.eyebrow}</p><h1 className="font-display uppercase tracking-wider">{page.title}</h1></div></div><div className="workspace-health" role="status" aria-label={healthState.description} data-testid="status-workspace-health"><span className={healthState.className} style={{backgroundColor: "var(--color-primary)"}} /> <b>{healthState.label}</b><small>medical link</small></div></header>
       <div className="workspace-scroll"><div className="workspace-content">{children}</div></div>
     </main>
   </div>

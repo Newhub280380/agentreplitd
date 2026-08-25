@@ -3,6 +3,7 @@ import { sql } from "drizzle-orm";
 
 const migrationId = "agent360-billing-v1";
 const channelMigrationId = "agent360-channels-v1";
+const medicalGovernanceMigrationId = "agent360-medical-governance-v1";
 
 /**
  * Keeps deployments of the existing application database compatible with the
@@ -125,6 +126,44 @@ export async function runAgent360BillingMigration(): Promise<void> {
     await tx.execute(sql`
       INSERT INTO agent360_schema_migrations (id)
       VALUES (${channelMigrationId})
+      ON CONFLICT (id) DO NOTHING
+    `);
+    await tx.execute(sql`
+      CREATE TABLE IF NOT EXISTS agent360_medical_dossiers (
+        id text PRIMARY KEY,
+        workspace_id text NOT NULL,
+        name text NOT NULL,
+        volume text NOT NULL,
+        source_links jsonb NOT NULL DEFAULT '[]'::jsonb,
+        registration_safety text NOT NULL,
+        approved_claims jsonb NOT NULL DEFAULT '[]'::jsonb,
+        audiences jsonb NOT NULL DEFAULT '[]'::jsonb,
+        review_state text NOT NULL DEFAULT 'needs_evidence',
+        version integer NOT NULL DEFAULT 1,
+        created_at timestamptz NOT NULL DEFAULT now(),
+        updated_at timestamptz NOT NULL DEFAULT now()
+      )
+    `);
+    await tx.execute(sql`
+      CREATE INDEX IF NOT EXISTS agent360_medical_dossiers_workspace_idx
+      ON agent360_medical_dossiers (workspace_id, updated_at DESC)
+    `);
+    await tx.execute(sql`ALTER TABLE agent360_content ADD COLUMN IF NOT EXISTS format text NOT NULL DEFAULT 'expert_post'`);
+    await tx.execute(sql`ALTER TABLE agent360_content ADD COLUMN IF NOT EXISTS dossier_id text`);
+    await tx.execute(sql`ALTER TABLE agent360_content ADD COLUMN IF NOT EXISTS review_state text NOT NULL DEFAULT 'pending'`);
+    await tx.execute(sql`ALTER TABLE agent360_content ADD COLUMN IF NOT EXISTS claim_warnings jsonb NOT NULL DEFAULT '[]'::jsonb`);
+    await tx.execute(sql`ALTER TABLE agent360_content ADD COLUMN IF NOT EXISTS requires_human_review boolean NOT NULL DEFAULT false`);
+    await tx.execute(sql`ALTER TABLE agent360_content ADD COLUMN IF NOT EXISTS reviewed_by text`);
+    await tx.execute(sql`ALTER TABLE agent360_content ADD COLUMN IF NOT EXISTS reviewed_at timestamptz`);
+    await tx.execute(sql`ALTER TABLE agent360_content ADD COLUMN IF NOT EXISTS content_version integer NOT NULL DEFAULT 1`);
+    await tx.execute(sql`ALTER TABLE agent360_content ADD COLUMN IF NOT EXISTS review_trail jsonb NOT NULL DEFAULT '[]'::jsonb`);
+    await tx.execute(sql`
+      CREATE INDEX IF NOT EXISTS agent360_content_workspace_review_idx
+      ON agent360_content (workspace_id, review_state, created_at DESC)
+    `);
+    await tx.execute(sql`
+      INSERT INTO agent360_schema_migrations (id)
+      VALUES (${medicalGovernanceMigrationId})
       ON CONFLICT (id) DO NOTHING
     `);
   });

@@ -14,3 +14,17 @@ mtime_ms = 1787667438892
 storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:4cbbdb66-5720-4c48-93c1-689218f4a3eb/538fc1ca-599b-4e69-bcf9-f34cb86f4621/210c697c-3c9b-4863-9f13-49c7ad262276"
 storage_version_token = "1787667452786872"
 content_type = "application/octet-stream"
+
+[[outputs]]
+id = "VJh9FQ4htpLqa_1km0cFl"
+uri = "file://external/omnibot/app/build/outputs/apk/developStandard/release/app-develop-standard-release.apk"
+type = "unspecified"
+title = "OmniBot for Samsung — vision repair"
+description = "Signed 97.1 MB installer with DeepSeek vision image handling and explicit text-model safeguards."
+logical_id = "877e3e48-e69b-4a39-b2b8-5a903385f153"
+content_hash = "sha256:4954d47ee5e7f4c451aa0820b51be8792cea7bb8c49fa67bc245f2c16ab5b848"
+size = 97120693
+mtime_ms = 1787674825903
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:4cbbdb66-5720-4c48-93c1-689218f4a3eb/877e3e48-e69b-4a39-b2b8-5a903385f153/eabc92f7-2c6d-4bfa-893d-183cc5e72842"
+storage_version_token = "1787674900806968"
+content_type = "application/octet-stream"

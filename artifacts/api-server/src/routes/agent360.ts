@@ -10,6 +10,8 @@ import {
   CheckChannelConnectionResponse,
   ConnectChannelBody,
   ConnectChannelResponse,
+  CreateMedicalDossierBody,
+  CreateMedicalDossierResponse,
   DisconnectChannelParams,
   DisconnectChannelResponse,
   GenerateContentBody,
@@ -22,6 +24,7 @@ import {
   GetContentResponse,
   GetDashboardSummaryResponse,
   GetInsightsResponse,
+  GetMedicalDossiersResponse,
   GetPlansResponse,
   GetRunParams,
   GetRunResponse,
@@ -29,12 +32,18 @@ import {
   PublishContentBody,
   PublishContentParams,
   PublishContentResponse,
+  ReviewContentBody,
+  ReviewContentParams,
+  ReviewContentResponse,
   RetryBuilderJobParams,
   RetryBuilderJobResponse,
   RunOrchestratorCommandBody,
   RunOrchestratorCommandResponse,
   StartAnalysisBody,
   StartAnalysisResponse,
+  UpdateMedicalDossierBody,
+  UpdateMedicalDossierParams,
+  UpdateMedicalDossierResponse,
 } from "@workspace/api-zod";
 import { appendFile } from "node:fs/promises";
 import path from "node:path";
@@ -44,6 +53,7 @@ import {
   createBuilderJob,
   createChannelConnection,
   createContent,
+  createMedicalDossier,
   createRun,
   ensureWorkspace,
   getAccountOverview,
@@ -53,17 +63,21 @@ import {
   getConnections,
   getContent,
   getInsights,
+  getMedicalDossiers,
+  medicalPolicyViolations,
   getRun,
   getRuns,
   checkChannelConnection,
   disconnectChannelConnection,
   isSupportedChannel,
   publishContent,
+  reviewContent,
   planCatalog,
   persistStripeCheckoutSession,
   releaseStripeCheckout,
   reserveStripeCheckout,
   updateBuilderJob,
+  updateMedicalDossier,
   verifyChannelTarget,
 } from "../lib/agent360-store";
 import {
@@ -473,6 +487,11 @@ router.post("/content", async (req, res): Promise<void> => {
     res.status(400).json({ error: body.error.message });
     return;
   }
+  const policyViolations = medicalPolicyViolations([body.data.topic, body.data.tone]);
+  if (policyViolations.length) {
+    res.status(400).json({ error: `Medical safety policy blocks: ${policyViolations.join(", ")}.` });
+    return;
+  }
   const workspace = await getWorkspace(req);
   const content = await createContent(
     workspace.id,
@@ -480,12 +499,63 @@ router.post("/content", async (req, res): Promise<void> => {
     body.data.topic,
     body.data.channels,
     body.data.tone,
+    body.data.dossierId,
+    body.data.format,
   );
   if (!content) {
     res.status(429).json({ error: "Monthly content limit reached. Upgrade will be available soon." });
     return;
   }
+  if ("error" in content) {
+    if (content.error === "unsafe_medical_content") {
+      res.status(400).json({ error: `Medical safety policy blocks: ${content.violations.join(", ")}.` });
+      return;
+    }
+    res.status(404).json({ error: "Medical dossier not found in this workspace." });
+    return;
+  }
   res.status(201).json(GenerateContentResponse.parse(content));
+});
+
+router.post("/content/:id/review", async (req, res): Promise<void> => {
+  const params = ReviewContentParams.safeParse(req.params);
+  const body = ReviewContentBody.safeParse(req.body);
+  if (!params.success || !body.success) {
+    const error = !params.success
+      ? params.error.message
+      : body.success
+        ? "Invalid review request"
+        : body.error.message;
+    res.status(400).json({ error });
+    return;
+  }
+  if (!body.data.confirmed) {
+    res.status(400).json({ error: "Operator confirmation is required before recording a review decision." });
+    return;
+  }
+  const workspace = await getWorkspace(req);
+  const content = await reviewContent(workspace.id, params.data.id, body.data);
+  if (!content) {
+    res.status(404).json({ error: "Content not found" });
+    return;
+  }
+  if ("error" in content) {
+    if (content.error === "reviewer_required") {
+      res.status(400).json({ error: "A named reviewer is required to record an auditable decision." });
+      return;
+    }
+    if (content.error === "unsafe_medical_content") {
+      res.status(409).json({ error: `Medical safety policy blocks approval: ${content.violations.join(", ")}.` });
+      return;
+    }
+    res.status(409).json({
+      error: content.error === "unresolved_claim_warnings"
+        ? "Resolve all claim warnings before approval."
+        : "Review could not be recorded.",
+    });
+    return;
+  }
+  res.json(ReviewContentResponse.parse(content));
 });
 
 router.post("/content/:id/publish", async (req, res): Promise<void> => {
@@ -511,8 +581,12 @@ router.post("/content/:id/publish", async (req, res): Promise<void> => {
     return;
   }
   if ("error" in result) {
-    if (result.error === "only_drafts") {
-      res.status(409).json({ error: "Only draft content can be published." });
+    if (result.error === "unsafe_medical_content") {
+      res.status(409).json({ error: `Medical safety policy blocks delivery: ${result.violations?.join(", ") ?? "prohibited content"}.` });
+      return;
+    }
+    if (result.error === "requires_review") {
+      res.status(409).json({ error: "Only content approved by an operator can be published." });
       return;
     }
     if (result.error === "duplicate_channels" || result.error === "channel_not_selected") {
@@ -524,6 +598,62 @@ router.post("/content/:id/publish", async (req, res): Promise<void> => {
     return;
   }
   res.json(PublishContentResponse.parse({ ...result.item, deliveries: result.deliveries }));
+});
+
+router.get("/medical/dossiers", async (req, res): Promise<void> => {
+  const workspace = await getWorkspace(req);
+  res.json(GetMedicalDossiersResponse.parse(await getMedicalDossiers(workspace.id)));
+});
+
+router.post("/medical/dossiers", async (req, res): Promise<void> => {
+  const body = CreateMedicalDossierBody.safeParse(req.body);
+  if (!body.success) {
+    res.status(400).json({ error: body.error.message });
+    return;
+  }
+  const policyViolations = medicalPolicyViolations([
+    body.data.name,
+    body.data.volume,
+    body.data.registrationSafety,
+    ...(body.data.approvedClaims ?? []),
+  ]);
+  if (policyViolations.length) {
+    res.status(400).json({ error: `Medical safety policy blocks: ${policyViolations.join(", ")}.` });
+    return;
+  }
+  const workspace = await getWorkspace(req);
+  res.status(201).json(CreateMedicalDossierResponse.parse(await createMedicalDossier(workspace.id, body.data)));
+});
+
+router.patch("/medical/dossiers/:id", async (req, res): Promise<void> => {
+  const params = UpdateMedicalDossierParams.safeParse(req.params);
+  const body = UpdateMedicalDossierBody.safeParse(req.body);
+  if (!params.success || !body.success) {
+    const error = !params.success
+      ? params.error.message
+      : body.success
+        ? "Invalid dossier update"
+        : body.error.message;
+    res.status(400).json({ error });
+    return;
+  }
+  const policyViolations = medicalPolicyViolations([
+    body.data.name,
+    body.data.volume,
+    body.data.registrationSafety,
+    ...(body.data.approvedClaims ?? []),
+  ]);
+  if (policyViolations.length) {
+    res.status(400).json({ error: `Medical safety policy blocks: ${policyViolations.join(", ")}.` });
+    return;
+  }
+  const workspace = await getWorkspace(req);
+  const dossier = await updateMedicalDossier(workspace.id, params.data.id, body.data);
+  if (!dossier) {
+    res.status(404).json({ error: "Medical dossier not found" });
+    return;
+  }
+  res.json(UpdateMedicalDossierResponse.parse(dossier));
 });
 
 router.get("/builder/jobs", async (req, res): Promise<void> => {

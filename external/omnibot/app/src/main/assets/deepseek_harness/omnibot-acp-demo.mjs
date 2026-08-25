@@ -25,6 +25,7 @@ import z from '@deepseek-ai/schemastery'
 import { installModelSelection } from '@deepseek-ai/dsh-agent'
 import * as agentCore from '@deepseek-ai/dsh-agent-spine-demo'
 import * as workspaceContext from '@deepseek-ai/dsh-agent-instructions'
+import LocalAttachmentStore from '@deepseek-ai/dsh-attachment-local'
 import { createUserMessage, errorChain } from '@deepseek-ai/dsh-llm'
 import { setSandboxMode } from '@deepseek-ai/dsh-sandbox-policy'
 import { SessionId } from '@deepseek-ai/dsh-session'
@@ -39,10 +40,12 @@ export const name = 'omnibot-acp-demo'
 
 const DEFAULT_PERSISTENCE_ROOT = './.sessions'
 const DEFAULT_PROVIDER = 'deepseek-official'
-const DEFAULT_MODEL = 'deepseek-v4-pro'
-const MODEL_IDS = ['deepseek-v4-flash', 'deepseek-v4-pro']
+const DEFAULT_MODEL = 'deepseek-v4-flash-vision-exp'
+const MODEL_IDS = ['deepseek-v4-flash-vision-exp', 'deepseek-v4-flash', 'deepseek-v4-pro']
 const REASONING_EFFORTS = ['off', 'high', 'max']
 const PERMISSION_MODES = ['read-only', 'workspace-write', 'danger-full-access']
+const IMAGE_MEDIA_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif'])
+const CANONICAL_BASE64 = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/
 
 // Loader projects configuration through this schema before apply(). Keep the
 // app composition's passthroughs aligned with upstream dsh-acp-demo so none of
@@ -210,7 +213,85 @@ function acpPromptToText(prompt) {
 }
 
 function promptHasUnsupportedContent(prompt) {
-  return prompt.some(block => block.type !== 'text' && block.type !== 'resource_link')
+  return prompt.some(block =>
+    block.type !== 'text' && block.type !== 'resource_link' && block.type !== 'image'
+  )
+}
+
+function decodeImage(block) {
+  if (!IMAGE_MEDIA_TYPES.has(block.mimeType)) {
+    throw invalidParams('image mimeType must be image/png, image/jpeg, image/webp, or image/gif')
+  }
+  if (!CANONICAL_BASE64.test(block.data)) {
+    throw invalidParams('image data must be canonical base64')
+  }
+  const data = Buffer.from(block.data, 'base64')
+  if (data.toString('base64') !== block.data) {
+    throw invalidParams('image data must be canonical base64')
+  }
+  return { data, mediaType: block.mimeType }
+}
+
+async function routeSupportsImages(ctx, provider, model) {
+  const attachments = ctx.get('attachments')
+  const llm = ctx.get('llm')
+  if (attachments === undefined || llm === undefined || !provider || !model) return false
+  try {
+    const info = await llm.resolveModelInfo(provider, model)
+    return info.inputModalities?.includes('image') === true
+  } catch {
+    return false
+  }
+}
+
+async function promptContent(ctx, record, prompt) {
+  if (promptHasUnsupportedContent(prompt)) {
+    throw invalidParams('only text, image, and resource_link prompt content is supported')
+  }
+  const images = prompt.filter(block => block.type === 'image')
+  if (images.length === 0) {
+    const text = acpPromptToText(prompt)
+    if (text.trim().length === 0) throw invalidParams('empty prompt')
+    return [{ type: 'text', text }]
+  }
+  if (!await routeSupportsImages(
+    ctx,
+    record.selection.current.provider,
+    record.selection.current.model,
+  )) {
+    throw invalidParams(
+      `model "${record.selection.current.model}" does not support image input; select deepseek-v4-flash-vision-exp`
+    )
+  }
+  const attachments = ctx.get('attachments')
+  if (attachments === undefined) {
+    throw internalError('image attachments are unavailable because the local attachment store is not mounted')
+  }
+  let imageRefs
+  try {
+    imageRefs = await attachments.saveImages(images.map(decodeImage))
+  } catch (error) {
+    throw invalidParams(
+      `image attachment could not be prepared: ${error instanceof Error ? error.message : String(error)}`
+    )
+  }
+  let imageIndex = 0
+  const content = prompt.flatMap(block => {
+    if (block.type === 'text') return block.text.length > 0 ? [{ type: 'text', text: block.text }] : []
+    if (block.type === 'resource_link') {
+      return [{
+        type: 'text',
+        text: `\n[resource_link name=${JSON.stringify(block.name)} uri=${JSON.stringify(block.uri)}]\n`,
+      }]
+    }
+    if (block.type === 'image') {
+      const attachment = imageRefs[imageIndex++]
+      return [{ type: 'image', attachment }]
+    }
+    return []
+  })
+  if (content.length === 0) throw invalidParams('empty prompt')
+  return content
 }
 
 const interactiveAcp = {
@@ -223,6 +304,7 @@ const interactiveAcp = {
     const configuredModels = uniqueValues(config.model ?? DEFAULT_MODEL, MODEL_IDS)
     let closed = false
     let conn
+    let imagePromptEnabled = false
 
     const ownedRecord = agent => {
       const record = sessions.get(agent.session.id)
@@ -373,15 +455,20 @@ const interactiveAcp = {
     const makeAgent = connection => {
       conn = connection
       return {
-        initialize() {
-          return Promise.resolve({
+        async initialize() {
+          imagePromptEnabled = await routeSupportsImages(
+            ctx,
+            config.provider ?? DEFAULT_PROVIDER,
+            config.model ?? DEFAULT_MODEL,
+          )
+          return {
             protocolVersion: PROTOCOL_VERSION,
             agentInfo: { name: 'deepseek-harness-acp', version: 'omnibot-1' },
             agentCapabilities: {
-              promptCapabilities: { image: false, audio: false, embeddedContext: false },
+              promptCapabilities: { image: imagePromptEnabled, audio: false, embeddedContext: false },
             },
             authMethods: [],
-          })
+          }
         },
 
         authenticate() {
@@ -435,7 +522,7 @@ const interactiveAcp = {
           }
         },
 
-        setSessionConfigOption(params) {
+        async setSessionConfigOption(params) {
           const record = requireSession(SessionId(params.sessionId))
           if (record.inflight !== undefined) {
             throw invalidParams('session configuration cannot change during a prompt')
@@ -443,6 +530,16 @@ const interactiveAcp = {
           if (params.configId === 'model') {
             if (!configuredModels.includes(params.value)) {
               throw invalidParams(`unknown model value: ${params.value}`)
+            }
+            const nextModelSupportsImages = await routeSupportsImages(
+              ctx,
+              record.selection.current.provider,
+              params.value,
+            )
+            if (nextModelSupportsImages !== imagePromptEnabled) {
+              throw invalidParams(
+                'changing the model between vision and text-only routes requires restarting the browser agent'
+              )
             }
             record.selection.current = {
               ...record.selection.current,
@@ -474,17 +571,13 @@ const interactiveAcp = {
           if (record.inflight !== undefined) {
             throw invalidParams('a prompt is already in flight for this session')
           }
-          if (promptHasUnsupportedContent(params.prompt)) {
-            throw invalidParams('only text and resource_link prompt content is supported')
-          }
-          const text = acpPromptToText(params.prompt)
-          if (text.trim().length === 0) throw invalidParams('empty prompt')
+          const content = await promptContent(ctx, record, params.prompt)
           if (ctx.agents.get(record.agent.id) !== record.agent) {
             throw internalError('prompt was not queued: the agent was disposed outside the bridge')
           }
 
           const message = createUserMessage({
-            content: [{ type: 'text', text }],
+            content,
             source: { kind: 'user' },
           })
           const stopReason = await new Promise((resolve, reject) => {
@@ -568,6 +661,12 @@ export async function apply(ctx, config) {
   const persistenceRoot = config.persistenceRoot ?? DEFAULT_PERSISTENCE_ROOT
   const goals = config.goals ?? {}
   await ctx.effect(async function* () {
+    const attachmentStore = ctx.plugin(LocalAttachmentStore, {
+      dshHome: config.dshHome,
+    })
+    await attachmentStore
+    yield attachmentStore.dispose
+
     const spine = ctx.plugin(agentCore, { ...agentCore.pickSpineConfig(config), goals })
     await spine
     yield spine.dispose

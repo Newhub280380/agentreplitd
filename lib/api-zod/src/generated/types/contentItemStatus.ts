@@ -11,6 +11,9 @@ export type ContentItemStatus = typeof ContentItemStatus[keyof typeof ContentIte
 
 export const ContentItemStatus = {
   draft: 'draft',
+  in_review: 'in_review',
+  changes_requested: 'changes_requested',
+  approved: 'approved',
   scheduled: 'scheduled',
   publishing: 'publishing',
   published: 'published',

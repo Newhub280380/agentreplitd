@@ -35,10 +35,14 @@ import type {
   ConnectionStatus,
   ContentInput,
   ContentItem,
+  ContentReviewInput,
   DashboardSummary,
   ErrorResponse,
   HealthStatus,
   Insight,
+  MedicalDossier,
+  MedicalDossierInput,
+  MedicalDossierUpdate,
   Plan,
   PublishInput,
   QuotaExceededResponse,
@@ -1559,6 +1563,298 @@ export const usePublishContent = <TError = ErrorType<UnauthorizedResponse | void
         TContext
       > => {
       return useMutation(getPublishContentMutationOptions(options));
+    }
+
+export const getReviewContentUrl = (id: string,) => {
+
+
+
+
+  return `/api/content/${id}/review`
+}
+
+/**
+ * @summary Record a human review decision for governed medical content
+ */
+export const reviewContent = async (id: string,
+    contentReviewInput: ContentReviewInput, options?: Parameters<typeof customFetch>[1]): Promise<ContentItem> => {
+
+  return customFetch<ContentItem>(getReviewContentUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(contentReviewInput)
+  }
+);}
+
+
+
+
+
+export const getReviewContentMutationOptions = <TError = ErrorType<ErrorResponse | UnauthorizedResponse | void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reviewContent>>, TError,{id: string;data: BodyType<ContentReviewInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof reviewContent>>, TError,{id: string;data: BodyType<ContentReviewInput>}, TContext> => {
+
+const mutationKey = ['reviewContent'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof reviewContent>>, {id: string;data: BodyType<ContentReviewInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  reviewContent(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ReviewContentMutationResult = NonNullable<Awaited<ReturnType<typeof reviewContent>>>
+    export type ReviewContentMutationBody = BodyType<ContentReviewInput>
+    export type ReviewContentMutationError = ErrorType<ErrorResponse | UnauthorizedResponse | void>
+
+    /**
+ * @summary Record a human review decision for governed medical content
+ */
+export const useReviewContent = <TError = ErrorType<ErrorResponse | UnauthorizedResponse | void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reviewContent>>, TError,{id: string;data: BodyType<ContentReviewInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof reviewContent>>,
+        TError,
+        {id: string;data: BodyType<ContentReviewInput>},
+        TContext
+      > => {
+      return useMutation(getReviewContentMutationOptions(options));
+    }
+
+export const getGetMedicalDossiersUrl = () => {
+
+
+
+
+  return `/api/medical/dossiers`
+}
+
+/**
+ * @summary List governed medical product dossiers in the signed-in workspace
+ */
+export const getMedicalDossiers = async ( options?: Parameters<typeof customFetch>[1]): Promise<MedicalDossier[]> => {
+
+  return customFetch<MedicalDossier[]>(getGetMedicalDossiersUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetMedicalDossiersQueryKey = () => {
+    return [
+    `/api/medical/dossiers`
+    ] as const;
+    }
+
+
+export const getGetMedicalDossiersQueryOptions = <TData = Awaited<ReturnType<typeof getMedicalDossiers>>, TError = ErrorType<UnauthorizedResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMedicalDossiers>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetMedicalDossiersQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getMedicalDossiers>>> = ({ signal }) => getMedicalDossiers({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getMedicalDossiers>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetMedicalDossiersQueryResult = NonNullable<Awaited<ReturnType<typeof getMedicalDossiers>>>
+export type GetMedicalDossiersQueryError = ErrorType<UnauthorizedResponse>
+
+
+/**
+ * @summary List governed medical product dossiers in the signed-in workspace
+ */
+
+export function useGetMedicalDossiers<TData = Awaited<ReturnType<typeof getMedicalDossiers>>, TError = ErrorType<UnauthorizedResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMedicalDossiers>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetMedicalDossiersQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateMedicalDossierUrl = () => {
+
+
+
+
+  return `/api/medical/dossiers`
+}
+
+/**
+ * @summary Create a governed medical product dossier
+ */
+export const createMedicalDossier = async (medicalDossierInput: MedicalDossierInput, options?: Parameters<typeof customFetch>[1]): Promise<MedicalDossier> => {
+
+  return customFetch<MedicalDossier>(getCreateMedicalDossierUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(medicalDossierInput)
+  }
+);}
+
+
+
+
+
+export const getCreateMedicalDossierMutationOptions = <TError = ErrorType<UnauthorizedResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createMedicalDossier>>, TError,{data: BodyType<MedicalDossierInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createMedicalDossier>>, TError,{data: BodyType<MedicalDossierInput>}, TContext> => {
+
+const mutationKey = ['createMedicalDossier'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createMedicalDossier>>, {data: BodyType<MedicalDossierInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createMedicalDossier(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateMedicalDossierMutationResult = NonNullable<Awaited<ReturnType<typeof createMedicalDossier>>>
+    export type CreateMedicalDossierMutationBody = BodyType<MedicalDossierInput>
+    export type CreateMedicalDossierMutationError = ErrorType<UnauthorizedResponse>
+
+    /**
+ * @summary Create a governed medical product dossier
+ */
+export const useCreateMedicalDossier = <TError = ErrorType<UnauthorizedResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createMedicalDossier>>, TError,{data: BodyType<MedicalDossierInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createMedicalDossier>>,
+        TError,
+        {data: BodyType<MedicalDossierInput>},
+        TContext
+      > => {
+      return useMutation(getCreateMedicalDossierMutationOptions(options));
+    }
+
+export const getUpdateMedicalDossierUrl = (id: string,) => {
+
+
+
+
+  return `/api/medical/dossiers/${id}`
+}
+
+/**
+ * @summary Update a workspace-owned medical product dossier
+ */
+export const updateMedicalDossier = async (id: string,
+    medicalDossierUpdate: MedicalDossierUpdate, options?: Parameters<typeof customFetch>[1]): Promise<MedicalDossier> => {
+
+  return customFetch<MedicalDossier>(getUpdateMedicalDossierUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(medicalDossierUpdate)
+  }
+);}
+
+
+
+
+
+export const getUpdateMedicalDossierMutationOptions = <TError = ErrorType<UnauthorizedResponse | void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateMedicalDossier>>, TError,{id: string;data: BodyType<MedicalDossierUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateMedicalDossier>>, TError,{id: string;data: BodyType<MedicalDossierUpdate>}, TContext> => {
+
+const mutationKey = ['updateMedicalDossier'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateMedicalDossier>>, {id: string;data: BodyType<MedicalDossierUpdate>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateMedicalDossier(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateMedicalDossierMutationResult = NonNullable<Awaited<ReturnType<typeof updateMedicalDossier>>>
+    export type UpdateMedicalDossierMutationBody = BodyType<MedicalDossierUpdate>
+    export type UpdateMedicalDossierMutationError = ErrorType<UnauthorizedResponse | void>
+
+    /**
+ * @summary Update a workspace-owned medical product dossier
+ */
+export const useUpdateMedicalDossier = <TError = ErrorType<UnauthorizedResponse | void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateMedicalDossier>>, TError,{id: string;data: BodyType<MedicalDossierUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateMedicalDossier>>,
+        TError,
+        {id: string;data: BodyType<MedicalDossierUpdate>},
+        TContext
+      > => {
+      return useMutation(getUpdateMedicalDossierMutationOptions(options));
     }
 
 export const getGetBuilderJobsUrl = () => {

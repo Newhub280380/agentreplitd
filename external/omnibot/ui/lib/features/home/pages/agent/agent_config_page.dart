@@ -508,8 +508,12 @@ class _AgentConfigPageState extends State<AgentConfigPage> {
           key: const Key('deepseek-harness-model'),
           controller: _modelController,
           decoration: InputDecoration(
-            labelText: _text('模型 ID', 'Model ID'),
-            hintText: 'deepseek-v4-pro',
+            labelText: _text('浏览器代理实际使用的模型 ID', 'Browser agent model in use'),
+            hintText: 'deepseek-v4-flash-vision-exp',
+            helperText: _text(
+              '截图和图片需要选择 vision 模型',
+              'Screenshots and images require a vision model',
+            ),
           ),
         ),
         const SizedBox(height: 14),

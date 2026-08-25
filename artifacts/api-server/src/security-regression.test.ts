@@ -7,9 +7,12 @@ import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { after, before, describe, test } from "node:test";
 import {
+  CreateMedicalDossierResponse,
   GenerateContentResponse,
   GetAccountOverviewResponse,
   GetContentResponse,
+  GetMedicalDossiersResponse,
+  ReviewContentResponse,
 } from "@workspace/api-zod";
 import type { ErrorResponse, QuotaExceededResponse } from "@workspace/api-zod";
 import { pool } from "@workspace/db";
@@ -336,6 +339,7 @@ after(async () => {
       "agent360_runs",
       "agent360_insights",
       "agent360_content",
+      "agent360_medical_dossiers",
       "agent360_publish_deliveries",
       "agent360_channel_connections",
       "agent360_builder_jobs",
@@ -1101,6 +1105,184 @@ describe("agent 360 authentication and quota regression", () => {
     assertErrorResponse(await json(afterSignOut));
   });
 
+  test("keeps medical dossiers isolated and requires a confirmed human review before approval", async () => {
+    const alice = registerUser();
+    const bob = registerUser();
+    const dossierResponse = await request("/api/medical/dossiers", alice, {
+      method: "POST",
+      body: JSON.stringify({
+        name: "Zishell Rose Glam",
+        volume: "10 ml",
+        sourceLinks: ["https://example.org/source"],
+        registrationSafety: "Требуется проверка регистрационных документов и инструкций перед коммерческим использованием.",
+        approvedClaims: ["Материал доступен для профессионального ознакомления после проверки dossier."],
+        audiences: ["Лицензированные специалисты эстетической медицины"],
+        reviewState: "approved",
+      }),
+    });
+    assert.equal(dossierResponse.status, 201);
+    const dossier = CreateMedicalDossierResponse.parse(await json(dossierResponse));
+
+    const bobDossiers = await request("/api/medical/dossiers", bob);
+    assert.equal(bobDossiers.status, 200);
+    assert.deepEqual(GetMedicalDossiersResponse.parse(await json(bobDossiers)), []);
+
+    const crossWorkspaceEdit = await request(`/api/medical/dossiers/${dossier.id}`, bob, {
+      method: "PATCH",
+      body: JSON.stringify({ reviewState: "approved" }),
+    });
+    assert.equal(crossWorkspaceEdit.status, 404);
+    assertErrorResponse(await json(crossWorkspaceEdit));
+
+    const draftResponse = await request("/api/content", alice, {
+      method: "POST",
+      body: JSON.stringify({
+        topic: "Разбор утверждённых материалов для профессионального сообщества",
+        channels: ["telegram"],
+        dossierId: dossier.id,
+        format: "expert_post",
+      }),
+    });
+    assert.equal(draftResponse.status, 201);
+    const draft = GenerateContentResponse.parse(await json(draftResponse));
+    assert.equal(draft.reviewState, "pending");
+    assert.equal(draft.requiresHumanReview, true);
+
+    const missingConfirmation = await request(`/api/content/${draft.id}/review`, alice, {
+      method: "POST",
+      body: JSON.stringify({ decision: "approved", reviewer: "Medical reviewer", confirmed: false }),
+    });
+    assert.equal(missingConfirmation.status, 400);
+    assertErrorResponse(await json(missingConfirmation));
+
+    const reviewResponse = await request(`/api/content/${draft.id}/review`, alice, {
+      method: "POST",
+      body: JSON.stringify({
+        decision: "approved",
+        reviewer: "Medical reviewer",
+        notes: "Claims checked against the attached dossier.",
+        confirmed: true,
+      }),
+    });
+    assert.equal(reviewResponse.status, 200);
+    const reviewed = ReviewContentResponse.parse(await json(reviewResponse));
+    assert.equal(reviewed.status, "approved");
+    assert.equal(reviewed.reviewState, "approved");
+    assert.equal(reviewed.reviewTrail.length, 1);
+    assert.equal(reviewed.reviewTrail[0]?.attested, true);
+
+    const crossWorkspaceReview = await request(`/api/content/${draft.id}/review`, bob, {
+      method: "POST",
+      body: JSON.stringify({ decision: "approved", confirmed: true }),
+    });
+    assert.equal(crossWorkspaceReview.status, 404);
+    assertErrorResponse(await json(crossWorkspaceReview));
+  });
+
+  test("blocks prohibited clinical claims and prevents approval with unresolved dossier warnings", async () => {
+    const userId = registerUser();
+    const unsafeDossier = await request("/api/medical/dossiers", userId, {
+      method: "POST",
+      body: JSON.stringify({
+        name: "Unsafe dossier",
+        volume: "10 ml",
+        registrationSafety: "Проверка регистрационных документов обязательна перед любым использованием.",
+        approvedClaims: ["Гарантирует клинический результат для каждого пациента."],
+        audiences: ["Лицензированные специалисты"],
+        reviewState: "needs_evidence",
+      }),
+    });
+    assert.equal(unsafeDossier.status, 400);
+    assertErrorResponse(await json(unsafeDossier));
+
+    const unsafeDraft = await request("/api/content", userId, {
+      method: "POST",
+      body: JSON.stringify({
+        topic: "Назначьте пациенту дозировку для гарантированного результата",
+        channels: ["telegram"],
+      }),
+    });
+    assert.equal(unsafeDraft.status, 400);
+    assertErrorResponse(await json(unsafeDraft));
+
+    const semanticBypassDraft = await request("/api/content", userId, {
+      method: "POST",
+      body: JSON.stringify({
+        topic: "Определите заболевание для конкретного человека",
+        channels: ["telegram"],
+      }),
+    });
+    assert.equal(semanticBypassDraft.status, 400);
+    assertErrorResponse(await json(semanticBypassDraft));
+
+    for (const topic of [
+      "Подберите методику для Анны",
+      "recommend a procedure for Maria",
+      "determine whether Ivan has flu",
+    ]) {
+      const namedPersonDraft = await request("/api/content", userId, {
+        method: "POST",
+        body: JSON.stringify({ topic, channels: ["telegram"] }),
+      });
+      assert.equal(namedPersonDraft.status, 400, topic);
+      assertErrorResponse(await json(namedPersonDraft));
+    }
+
+    const connectionsResponse = await request("/api/connections", userId);
+    assert.equal(connectionsResponse.status, 200);
+    const connections = await json(connectionsResponse) as Array<{ channel?: string; status?: string }>;
+    assert.equal(connections.find((connection) => connection.channel === "instagram")?.status, "unavailable");
+
+    const warningDossierResponse = await request("/api/medical/dossiers", userId, {
+      method: "POST",
+      body: JSON.stringify({
+        name: "Evidence pending dossier",
+        volume: "10 ml",
+        registrationSafety: "Проверка регистрационных документов обязательна перед любым использованием.",
+        approvedClaims: [],
+        audiences: ["Лицензированные специалисты"],
+        reviewState: "approved",
+      }),
+    });
+    assert.equal(warningDossierResponse.status, 201);
+    const warningDossier = CreateMedicalDossierResponse.parse(await json(warningDossierResponse));
+
+    const warningDraftResponse = await request("/api/content", userId, {
+      method: "POST",
+      body: JSON.stringify({
+        topic: "Материал для профессионального ознакомления с dossier",
+        channels: ["telegram"],
+        dossierId: warningDossier.id,
+        format: "product_card",
+      }),
+    });
+    assert.equal(warningDraftResponse.status, 201);
+    const warningDraft = GenerateContentResponse.parse(await json(warningDraftResponse));
+    assert.ok(warningDraft.claimWarnings.length > 0);
+
+    const dossierlessDraftResponse = await request("/api/content", userId, {
+      method: "POST",
+      body: JSON.stringify({
+        topic: "Нейтральный материал для профессионального ознакомления",
+        channels: ["telegram"],
+      }),
+    });
+    assert.equal(dossierlessDraftResponse.status, 201);
+    const dossierlessDraft = GenerateContentResponse.parse(await json(dossierlessDraftResponse));
+    assert.ok(dossierlessDraft.claimWarnings.some((warning) => warning.includes("не привязан к dossier")));
+
+    const blockedApproval = await request(`/api/content/${warningDraft.id}/review`, userId, {
+      method: "POST",
+      body: JSON.stringify({
+        decision: "approved",
+        reviewer: "Medical reviewer",
+        confirmed: true,
+      }),
+    });
+    assert.equal(blockedApproval.status, 409);
+    assertErrorResponse(await json(blockedApproval));
+  });
+
   test("publishes a confirmed Telegram draft without returning its credential", async () => {
     const originalFetch = globalThis.fetch;
     const telegramCredential = "test-telegram-credential";
@@ -1138,9 +1320,23 @@ describe("agent 360 authentication and quota regression", () => {
       const connectionBody = await json(connection);
       assert.doesNotMatch(JSON.stringify(connectionBody), new RegExp(telegramCredential));
 
+      const dossierResponse = await request("/api/medical/dossiers", userId, {
+        method: "POST",
+        body: JSON.stringify({
+          name: "Delivery evidence dossier",
+          volume: "10 ml",
+          registrationSafety: "Регистрационные документы и инструкции проверены для профессионального ознакомления.",
+          approvedClaims: ["Материал доступен для профессионального ознакомления после human review."],
+          audiences: ["Лицензированные специалисты"],
+          reviewState: "approved",
+        }),
+      });
+      assert.equal(dossierResponse.status, 201);
+      const dossier = CreateMedicalDossierResponse.parse(await json(dossierResponse));
+
       const draftResponse = await request("/api/content", userId, {
         method: "POST",
-        body: JSON.stringify({ topic: "Verified delivery", channels: ["telegram"] }),
+        body: JSON.stringify({ topic: "Verified delivery", channels: ["telegram"], dossierId: dossier.id }),
       });
       assert.equal(draftResponse.status, 201);
       const draft = GenerateContentResponse.parse(await json(draftResponse));
@@ -1158,6 +1354,18 @@ describe("agent 360 authentication and quota regression", () => {
       });
       assert.equal(targetOutsideDraftPublish.status, 400);
       assertErrorResponse(await json(targetOutsideDraftPublish));
+
+      const reviewResponse = await request(`/api/content/${draft.id}/review`, userId, {
+        method: "POST",
+        body: JSON.stringify({
+          decision: "approved",
+          reviewer: "Delivery test reviewer",
+          notes: "Approved for the isolated Telegram delivery regression.",
+          confirmed: true,
+        }),
+      });
+      assert.equal(reviewResponse.status, 200);
+      assert.equal(ReviewContentResponse.parse(await json(reviewResponse)).reviewState, "approved");
 
       const publishResponse = await request(`/api/content/${draft.id}/publish`, userId, {
         method: "POST",

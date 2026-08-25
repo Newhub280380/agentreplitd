@@ -6,10 +6,13 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { ContentInputChannelsItem } from './contentInputChannelsItem';
+import type { ContentInputFormat } from './contentInputFormat';
 
 export interface ContentInput {
   /** @minLength 2 */
   topic: string;
   channels: ContentInputChannelsItem[];
   tone?: string;
+  dossierId?: string;
+  format?: ContentInputFormat;
 }
