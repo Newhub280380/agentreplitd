@@ -9,6 +9,9 @@
 - `pnpm --filter @workspace/agent-multitool-360 run dev` — run the React command center
 - `pnpm run typecheck` — full typecheck across all packages
 - `pnpm --filter @workspace/scripts run security-test` — run authentication, workspace-isolation, and quota regression checks
+- `pnpm --filter @workspace/scripts run stripe-webhook-test` — run the opt-in Stripe test-mode checkout and managed-webhook delivery regression
+- `pnpm --filter @workspace/scripts run stripe-webhook-browser-test` — hold real test-mode hosted Checkout sessions for browser completion, then verify their webhook lifecycle
+- `pnpm --filter @workspace/scripts run stripe-webhook-browser-release-test` — keep the hosted Checkout release gate alive for a Playwright harness; read the printed session manifest, complete Starter and Pro, then write its completion marker
 - `pnpm run build` — typecheck + build all packages; frontend builds use their
   artifact defaults when `PORT` and `BASE_PATH` are not set
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec

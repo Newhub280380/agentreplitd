@@ -325,7 +325,10 @@ export async function applyStripeSubscriptionState({
   const plan = isPaidPlan && billableSubscriptionStatuses.has(status) ? planId : "free";
 
   return db.transaction(async (tx) => {
-    await tx.execute(sql`SELECT id FROM ${workspacesTable} WHERE id = ${workspaceId} FOR UPDATE`);
+    const lockedWorkspace = await tx.execute<{ id: string }>(
+      sql`SELECT id FROM ${workspacesTable} WHERE id = ${workspaceId} FOR UPDATE`,
+    );
+    if (lockedWorkspace.rows.length === 0) return "stale";
 
     const inserted = await tx
       .insert(stripeEventsTable)

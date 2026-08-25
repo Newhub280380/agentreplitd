@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { dirname } from "node:path";
 import { createServer, type Server } from "node:http";
 import { after, before, describe, test } from "node:test";
 import {
@@ -10,9 +12,35 @@ import type { ErrorResponse, QuotaExceededResponse } from "@workspace/api-zod";
 import { pool } from "@workspace/db";
 import productionApp, { createTestApp } from "./app";
 import { initializeAgent360Schema } from "./lib/agent360-schema-init";
+import { applyStripeSubscriptionState } from "./lib/agent360-store";
+import { getOrCreatePrice } from "./lib/stripeService";
+import { getStripeCredentials } from "./lib/stripeClient";
+import Stripe from "stripe";
 
 const testUserPrefix = `security-test-${Date.now()}-`;
 const userIds = new Set<string>();
+const paidPlanIds = ["starter", "pro"] as const;
+type PaidPlanId = (typeof paidPlanIds)[number];
+type StripeTestResource = {
+  customerId?: string;
+  checkoutSessionId?: string;
+  checkoutSessionUrl?: string;
+  paymentMethodId?: string;
+  planId: PaidPlanId;
+  subscriptionId?: string;
+  workspaceId: string;
+  userId: string;
+};
+const stripeWebhookRegressionEnabled = process.env.RUN_STRIPE_WEBHOOK_REGRESSION === "true";
+const stripeCheckoutBrowserHoldSeconds = Number.parseInt(
+  process.env.STRIPE_CHECKOUT_BROWSER_HOLD_SECONDS ?? "0",
+  10,
+);
+const stripeCheckoutBrowserRegressionEnabled = Number.isFinite(stripeCheckoutBrowserHoldSeconds)
+  && stripeCheckoutBrowserHoldSeconds > 0;
+const stripeCheckoutBrowserSessionFile = process.env.STRIPE_CHECKOUT_BROWSER_SESSION_FILE;
+const stripeCheckoutBrowserCompletionFile = process.env.STRIPE_CHECKOUT_BROWSER_COMPLETION_FILE;
+const stripeCheckoutBrowserFailureFile = process.env.STRIPE_CHECKOUT_BROWSER_FAILURE_FILE;
 
 let server: Server;
 let baseUrl: string;
@@ -44,6 +72,193 @@ async function request(
 async function json(response: Response): Promise<unknown> {
   assert.match(response.headers.get("content-type") ?? "", /^application\/json\b/);
   return response.json();
+}
+
+function stripeObject(event: Stripe.Event): Record<string, unknown> {
+  return event.data.object as unknown as Record<string, unknown>;
+}
+
+function stripeObjectId(value: unknown): string | null {
+  if (typeof value === "string") return value;
+  if (value && typeof value === "object" && "id" in value && typeof value.id === "string") {
+    return value.id;
+  }
+  return null;
+}
+
+function eventReferencesSubscription(event: Stripe.Event, subscriptionId: string, customerId: string): boolean {
+  const object = stripeObject(event);
+  if (event.type.startsWith("customer.subscription.") && object.id === subscriptionId) return true;
+  if (stripeObjectId(object.customer) === customerId) {
+    if (event.type.startsWith("invoice.")) {
+      const parent = object.parent;
+      if (parent && typeof parent === "object" && "subscription_details" in parent) {
+        const details = parent.subscription_details;
+        if (details && typeof details === "object" && "subscription" in details) {
+          return stripeObjectId(details.subscription) === subscriptionId;
+        }
+      }
+      return stripeObjectId(object.subscription) === subscriptionId;
+    }
+    if (event.type === "checkout.session.completed") {
+      return stripeObjectId(object.subscription) === subscriptionId;
+    }
+  }
+  return false;
+}
+
+async function wait(milliseconds: number): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+async function waitForHostedCheckoutBrowser({
+  resources,
+  timeoutSeconds,
+}: {
+  resources: Map<PaidPlanId, StripeTestResource>;
+  timeoutSeconds: number;
+}): Promise<void> {
+  if (!stripeCheckoutBrowserCompletionFile) {
+    await wait(timeoutSeconds * 1_000);
+    return;
+  }
+
+  const deadline = Date.now() + timeoutSeconds * 1_000;
+  while (Date.now() < deadline) {
+    if (stripeCheckoutBrowserFailureFile) {
+      try {
+        const reason = (await readFile(stripeCheckoutBrowserFailureFile, "utf8")).trim();
+        throw new Error(reason || "The hosted Checkout browser harness reported a failure.");
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      }
+    }
+
+    try {
+      await readFile(stripeCheckoutBrowserCompletionFile, "utf8");
+      return;
+    } catch {
+      await wait(1_000);
+    }
+  }
+
+  const completedPlans = paidPlanIds
+    .filter((planId) => resources.get(planId)?.checkoutSessionUrl)
+    .join(", ");
+  throw new Error(
+    `Hosted Checkout browser harness did not complete within ${timeoutSeconds}s (sessions: ${completedPlans}).`,
+  );
+}
+
+async function relatedStripeEvents(
+  stripe: Stripe,
+  subscriptionId: string,
+  customerId: string,
+  createdAfter: number,
+  requireCheckoutCompletion = false,
+): Promise<Stripe.Event[]> {
+  const supportedLifecycleEvents = new Set([
+    "checkout.session.completed",
+    "customer.subscription.created",
+    "customer.subscription.updated",
+    "customer.subscription.deleted",
+    "invoice.paid",
+    "invoice.payment_failed",
+  ]);
+
+  for (let attempt = 0; attempt < 12; attempt += 1) {
+    const events = await stripe.events.list({
+      created: { gte: createdAfter },
+      limit: 100,
+    });
+    const related = events.data.filter(
+      (event) =>
+        supportedLifecycleEvents.has(event.type) &&
+        eventReferencesSubscription(event, subscriptionId, customerId),
+    );
+    if (
+      related.length >= 2 &&
+      related.some((event) => event.type === "customer.subscription.created") &&
+      related.some((event) => event.type === "invoice.paid" || event.type === "invoice.payment_failed") &&
+      (!requireCheckoutCompletion || related.some((event) => event.type === "checkout.session.completed"))
+    ) {
+      return related;
+    }
+    await wait(500);
+  }
+
+  throw new Error(`Stripe did not expose the complete lifecycle for subscription ${subscriptionId}.`);
+}
+
+async function relatedStripeEventByType(
+  stripe: Stripe,
+  type: Stripe.Event.Type,
+  subscriptionId: string,
+  customerId: string,
+  createdAfter: number,
+): Promise<Stripe.Event> {
+  for (let attempt = 0; attempt < 12; attempt += 1) {
+    const events = await stripe.events.list({
+      type,
+      created: { gte: createdAfter },
+      limit: 100,
+    });
+    const event = events.data.find((candidate) =>
+      eventReferencesSubscription(candidate, subscriptionId, customerId),
+    );
+    if (event) return event;
+    await wait(500);
+  }
+
+  throw new Error(`Stripe did not expose ${type} for subscription ${subscriptionId}.`);
+}
+
+async function waitForPersistedStripeEvents(workspaceId: string, eventIds: string[]): Promise<void> {
+  for (let attempt = 0; attempt < 60; attempt += 1) {
+    const processedEvents = await pool.query<{ count: string }>(
+      `SELECT count(*)::text AS count
+       FROM agent360_stripe_events
+       WHERE workspace_id = $1 AND id = ANY($2::text[])`,
+      [workspaceId, eventIds],
+    );
+    if (Number(processedEvents.rows[0]?.count ?? 0) === eventIds.length) return;
+    await wait(1_000);
+  }
+
+  throw new Error(`Stripe did not deliver every lifecycle event for workspace ${workspaceId}.`);
+}
+
+async function waitForStripeWebhookDelivery({
+  userId,
+  workspaceId,
+  planId,
+  events,
+}: {
+  userId: string;
+  workspaceId: string;
+  planId: PaidPlanId;
+  events: Stripe.Event[];
+}): Promise<void> {
+  for (let attempt = 0; attempt < 60; attempt += 1) {
+    const accountResponse = await request("/api/account", userId);
+    const account = GetAccountOverviewResponse.parse(await json(accountResponse));
+    const processedEvents = await pool.query<{ count: string }>(
+      `SELECT count(*)::text AS count
+       FROM agent360_stripe_events
+       WHERE workspace_id = $1 AND id = ANY($2::text[])`,
+      [workspaceId, events.map((event) => event.id)],
+    );
+    if (
+      account.workspace.plan === planId &&
+      account.subscription.status === "active" &&
+      Number(processedEvents.rows[0]?.count ?? 0) === events.length
+    ) {
+      return;
+    }
+    await wait(1_000);
+  }
+
+  throw new Error(`Stripe did not deliver the lifecycle events for ${planId} to the managed webhook.`);
 }
 
 before(async () => {
@@ -79,6 +294,11 @@ after(async () => {
   if (ids.length > 0) {
     const placeholders = ids.map((_, index) => `$${index + 1}`).join(", ");
     const workspaceQuery = `(SELECT id FROM agent360_workspaces WHERE user_id IN (${placeholders}))`;
+    const workspaceResult = await pool.query<{ id: string }>(
+      `SELECT id FROM agent360_workspaces WHERE user_id IN (${placeholders})`,
+      ids,
+    );
+    const workspaceIds = workspaceResult.rows.map(({ id }) => id);
     for (const table of [
       "agent360_activities",
       "agent360_memories",
@@ -89,15 +309,425 @@ after(async () => {
       "agent360_channel_connections",
       "agent360_builder_jobs",
       "agent360_workspace_usage",
+      "agent360_stripe_events",
     ]) {
       await pool.query(`DELETE FROM ${table} WHERE workspace_id IN ${workspaceQuery}`, ids);
     }
     await pool.query(`DELETE FROM agent360_workspaces WHERE user_id IN (${placeholders})`, ids);
+    if (workspaceIds.length > 0) {
+      const remainingEvents = await pool.query<{ count: string }>(
+        `SELECT count(*)::text AS count
+         FROM agent360_stripe_events
+         WHERE workspace_id = ANY($1::text[])`,
+        [workspaceIds],
+      );
+      assert.equal(Number(remainingEvents.rows[0]?.count ?? 0), 0);
+      console.log(`Confirmed no Stripe test event rows remain for ${workspaceIds.length} workspace(s).`);
+    }
   }
   await pool.end();
 });
 
 describe("agent 360 authentication and quota regression", () => {
+  test("reuses one Stripe product and price during parallel catalog creation", async () => {
+    const products: Array<{ id: string; created: number; metadata: { agent360_plan: string } }> = [];
+    const prices: Array<{
+      id: string;
+      created: number;
+      currency: string;
+      unit_amount: number;
+      recurring: { interval: string };
+    }> = [];
+    let productCreates = 0;
+    let priceCreates = 0;
+    const wait = () => new Promise((resolve) => setTimeout(resolve, 25));
+    const stripe = {
+      products: {
+        list: async () => ({ data: products }),
+        create: async () => {
+          productCreates += 1;
+          await wait();
+          const product = {
+            id: "prod_agent360_starter",
+            created: 1,
+            metadata: { agent360_plan: "starter" },
+          };
+          products.push(product);
+          return product;
+        },
+        update: async () => undefined,
+      },
+      prices: {
+        list: async () => ({ data: prices }),
+        create: async () => {
+          priceCreates += 1;
+          await wait();
+          const price = {
+            id: "price_agent360_starter_monthly",
+            created: 1,
+            currency: "usd",
+            unit_amount: 900,
+            recurring: { interval: "month" },
+          };
+          prices.push(price);
+          return price;
+        },
+        update: async () => undefined,
+      },
+    } as unknown as Stripe;
+
+    const result = await Promise.all([
+      getOrCreatePrice("starter", stripe),
+      getOrCreatePrice("starter", stripe),
+    ]);
+
+    assert.deepEqual(result, ["price_agent360_starter_monthly", "price_agent360_starter_monthly"]);
+    assert.equal(productCreates, 1);
+    assert.equal(priceCreates, 1);
+  });
+
+  test("deactivates every noncanonical active monthly USD price", async () => {
+    const deactivatedPriceIds: string[] = [];
+    const stripe = {
+      products: {
+        list: async () => ({
+          data: [{ id: "prod_agent360_starter", created: 1, metadata: { agent360_plan: "starter" } }],
+        }),
+        create: async () => undefined,
+        update: async () => undefined,
+      },
+      prices: {
+        list: async () => ({
+          data: [
+            {
+              id: "price_agent360_starter_monthly",
+              created: 1,
+              currency: "usd",
+              unit_amount: 900,
+              recurring: { interval: "month" },
+            },
+            {
+              id: "price_agent360_starter_legacy_monthly",
+              created: 2,
+              currency: "usd",
+              unit_amount: 1200,
+              recurring: { interval: "month" },
+            },
+            {
+              id: "price_agent360_starter_yearly",
+              created: 3,
+              currency: "usd",
+              unit_amount: 9000,
+              recurring: { interval: "year" },
+            },
+          ],
+        }),
+        create: async () => undefined,
+        update: async (id: string, update: { active?: boolean }) => {
+          if (update.active === false) deactivatedPriceIds.push(id);
+        },
+      },
+    } as unknown as Stripe;
+
+    assert.equal(await getOrCreatePrice("starter", stripe), "price_agent360_starter_monthly");
+    assert.deepEqual(deactivatedPriceIds, ["price_agent360_starter_legacy_monthly"]);
+  });
+
+  test("does not persist a Stripe event after its workspace is deleted", async () => {
+    const workspaceId = `deleted-workspace-${Date.now()}`;
+    const eventId = `evt_deleted_workspace_${Date.now()}`;
+    const outcome = await applyStripeSubscriptionState({
+      eventId,
+      eventCreatedAt: new Date(),
+      workspaceId,
+      stripeCustomerId: "cus_deleted_workspace",
+      stripeSubscriptionId: "sub_deleted_workspace",
+      status: "canceled",
+      currentPeriodEnd: null,
+      cancelAtPeriodEnd: false,
+      planId: "starter",
+    });
+
+    assert.equal(outcome, "stale");
+    const persisted = await pool.query<{ count: string }>(
+      `SELECT count(*)::text AS count FROM agent360_stripe_events WHERE id = $1`,
+      [eventId],
+    );
+    assert.equal(Number(persisted.rows[0]?.count ?? 0), 0);
+  });
+
+  test(
+    "keeps one active monthly USD catalog per paid plan during real test-mode webhook delivery",
+    { skip: stripeWebhookRegressionEnabled ? false : "Set RUN_STRIPE_WEBHOOK_REGRESSION=true to run Stripe test-mode delivery." },
+    async () => {
+      const { secretKey } = await getStripeCredentials();
+      assert.match(secretKey, /^(sk|rk)_test_/);
+      const stripeClient: Stripe = new Stripe(secretKey);
+      const resources = new Map<PaidPlanId, StripeTestResource>();
+      const amounts: Record<PaidPlanId, number> = { starter: 900, pro: 2900 };
+
+      try {
+        for (const planId of paidPlanIds) {
+          const userId = registerUser();
+          const accountResponse = await request("/api/account", userId);
+          const account = GetAccountOverviewResponse.parse(await json(accountResponse));
+          const resource: StripeTestResource = {
+            planId,
+            workspaceId: account.workspace.id,
+            userId,
+          };
+          resources.set(planId, resource);
+          const checkoutResponse = await request("/api/billing/checkout", userId, {
+            method: "POST",
+            body: JSON.stringify({ plan: planId }),
+          });
+          assert.equal(checkoutResponse.status, 200);
+          const checkoutBody = (await json(checkoutResponse)) as { url?: string };
+          assert.match(checkoutBody.url ?? "", /^https:\/\/checkout\.stripe\.com\//);
+          resource.checkoutSessionUrl = checkoutBody.url;
+
+          const workspaceResult = await pool.query<{ stripe_customer_id: string | null }>(
+            "SELECT stripe_customer_id FROM agent360_workspaces WHERE id = $1",
+            [account.workspace.id],
+          );
+          const customerId = workspaceResult.rows[0]?.stripe_customer_id;
+          assert.ok(customerId, `Stripe customer was not persisted for ${planId}.`);
+          resource.customerId = customerId;
+
+          const checkoutSessions = await stripeClient.checkout.sessions.list({
+            customer: customerId,
+            limit: 100,
+          });
+          const checkoutSession = checkoutSessions.data.find(
+            (session) =>
+              session.metadata?.agent360_workspace_id === account.workspace.id &&
+              session.metadata?.agent360_plan === planId,
+          );
+          assert.ok(checkoutSession, `Checkout session was not created for ${planId}.`);
+          assert.equal(checkoutSession.status, "open");
+          resource.checkoutSessionId = checkoutSession.id;
+
+          const priceId = await getOrCreatePrice(planId, stripeClient);
+          const checkoutWithItems = await stripeClient.checkout.sessions.retrieve(checkoutSession.id, {
+            expand: ["line_items"],
+          });
+          assert.equal(checkoutWithItems.line_items?.data[0]?.price?.id, priceId);
+
+        }
+
+        if (stripeCheckoutBrowserRegressionEnabled) {
+          if (stripeCheckoutBrowserSessionFile) {
+            await mkdir(dirname(stripeCheckoutBrowserSessionFile), { recursive: true });
+            await writeFile(
+              stripeCheckoutBrowserSessionFile,
+              JSON.stringify(
+                paidPlanIds.map((planId) => ({
+                  planId,
+                  url: resources.get(planId)?.checkoutSessionUrl,
+                })),
+                null,
+                2,
+              ),
+              "utf8",
+            );
+          }
+          console.log(
+            `Complete both hosted Checkout sessions within ${stripeCheckoutBrowserHoldSeconds}s: ${
+              JSON.stringify(
+                paidPlanIds.map((planId) => ({
+                  planId,
+                  url: resources.get(planId)?.checkoutSessionUrl,
+                })),
+              )
+            }`,
+          );
+          await waitForHostedCheckoutBrowser({
+            resources,
+            timeoutSeconds: stripeCheckoutBrowserHoldSeconds,
+          });
+        }
+
+        const subscriptions = await Promise.all(
+          paidPlanIds.map(async (planId) => {
+            const resource = resources.get(planId);
+            assert.ok(resource);
+            const customerId = resource.customerId;
+            assert.ok(customerId, `Stripe customer was not persisted for ${planId}.`);
+            assert.ok(resource.checkoutSessionId);
+            const priceId = await getOrCreatePrice(planId, stripeClient);
+            const checkoutSession = await stripeClient.checkout.sessions.retrieve(resource.checkoutSessionId);
+            const checkoutSubscriptionId = stripeObjectId(checkoutSession.subscription);
+            if (checkoutSession.status === "complete" && checkoutSession.payment_status === "paid") {
+              assert.ok(
+                checkoutSubscriptionId,
+                `Completed ${planId} Checkout session did not create a subscription.`,
+              );
+              const subscription = await stripeClient.subscriptions.retrieve(checkoutSubscriptionId);
+              assert.equal(subscription.items.data[0]?.price.id, priceId);
+              resource.subscriptionId = subscription.id;
+              return {
+                createdAfter: checkoutSession.created - 5,
+                planId,
+                requireCheckoutCompletion: true,
+                resource,
+                subscription,
+              };
+            }
+            assert.ok(
+              !stripeCheckoutBrowserRegressionEnabled,
+              `Hosted Checkout was not completed for ${planId} within ${stripeCheckoutBrowserHoldSeconds}s.`,
+            );
+
+            const createdAfter = Math.floor(Date.now() / 1_000) - 5;
+            const paymentMethod = await stripeClient.paymentMethods.create({
+              type: "card",
+              card: { token: "tok_visa" },
+            });
+            await stripeClient.paymentMethods.attach(paymentMethod.id, {
+              customer: customerId,
+            });
+            resource.paymentMethodId = paymentMethod.id;
+            await stripeClient.customers.update(customerId, {
+              invoice_settings: { default_payment_method: paymentMethod.id },
+            });
+            const subscription = await stripeClient.subscriptions.create({
+              customer: customerId,
+              items: [{ price: priceId, quantity: 1 }],
+              default_payment_method: paymentMethod.id,
+              payment_behavior: "error_if_incomplete",
+              metadata: {
+                agent360_workspace_id: resource.workspaceId,
+                agent360_plan: planId,
+              },
+            });
+            assert.equal(subscription.livemode, false);
+            assert.equal(subscription.items.data[0]?.price.id, priceId);
+            resource.subscriptionId = subscription.id;
+            return { createdAfter, planId, requireCheckoutCompletion: false, resource, subscription };
+          }),
+        );
+
+        const lifecycleEvents = await Promise.all(
+          subscriptions.map(async ({ createdAfter, requireCheckoutCompletion, resource, subscription }) => {
+            const events = await relatedStripeEvents(
+              stripeClient,
+              subscription.id,
+              resource.customerId!,
+              createdAfter,
+              requireCheckoutCompletion,
+            );
+            assert.ok(events.some((event) => event.type === "customer.subscription.created"));
+            assert.ok(events.some((event) => event.type === "invoice.paid"));
+            if (requireCheckoutCompletion) {
+              assert.ok(events.some((event) => event.type === "checkout.session.completed"));
+            }
+            return { events, resource, planId: resource.planId };
+          }),
+        );
+
+        await Promise.all(
+          lifecycleEvents.map(async ({ events, resource, planId }) => {
+            await waitForStripeWebhookDelivery({
+              userId: resource.userId,
+              workspaceId: resource.workspaceId,
+              planId,
+              events,
+            });
+          }),
+        );
+
+        for (const planId of paidPlanIds) {
+          const products = await stripeClient.products.list({ active: true, limit: 100 });
+          const matchingProducts = products.data.filter(
+            (product) => product.metadata.agent360_plan === planId,
+          );
+          assert.equal(matchingProducts.length, 1, `Expected one active ${planId} product.`);
+
+          const prices = await stripeClient.prices.list({
+            product: matchingProducts[0]!.id,
+            active: true,
+            type: "recurring",
+            limit: 100,
+          });
+          const matchingPrices = prices.data.filter(
+            (price) =>
+              price.currency === "usd" &&
+              price.recurring?.interval === "month",
+          );
+          assert.equal(matchingPrices.length, 1, `Expected one active monthly USD ${planId} price.`);
+          assert.equal(matchingPrices[0]?.unit_amount, amounts[planId]);
+        }
+      } finally {
+        const cleanupFailures: string[] = [];
+        for (const [planId, resource] of resources) {
+          if (!resource.customerId) {
+            const workspaceResult = await pool.query<{ stripe_customer_id: string | null }>(
+              "SELECT stripe_customer_id FROM agent360_workspaces WHERE id = $1",
+              [resource.workspaceId],
+            );
+            resource.customerId = workspaceResult.rows[0]?.stripe_customer_id ?? undefined;
+          }
+          if (!resource.customerId) continue;
+
+          if (resource.subscriptionId) {
+            try {
+              const cancellationStarted = Math.floor(Date.now() / 1_000) - 5;
+              const subscription = await stripeClient.subscriptions.retrieve(resource.subscriptionId);
+              if (subscription.status !== "canceled") {
+                const canceledSubscription = await stripeClient.subscriptions.cancel(resource.subscriptionId);
+                assert.equal(canceledSubscription.status, "canceled");
+                const deletedEvent = await relatedStripeEventByType(
+                  stripeClient,
+                  "customer.subscription.deleted",
+                  resource.subscriptionId,
+                  resource.customerId,
+                  cancellationStarted,
+                );
+                await waitForPersistedStripeEvents(resource.workspaceId, [deletedEvent.id]);
+              }
+            } catch (error) {
+              cleanupFailures.push(`${planId} subscription: ${error instanceof Error ? error.message : String(error)}`);
+            }
+          }
+
+          try {
+            const sessions = await stripeClient.checkout.sessions.list({
+              customer: resource.customerId,
+              limit: 100,
+            });
+            for (const session of sessions.data) {
+              if (session.status === "open") {
+                const expiredSession = await stripeClient.checkout.sessions.expire(session.id);
+                assert.equal(expiredSession.status, "expired");
+              }
+            }
+          } catch (error) {
+            cleanupFailures.push(`${planId} checkout: ${error instanceof Error ? error.message : String(error)}`);
+          }
+
+          if (resource.paymentMethodId) {
+            try {
+              const detachedPaymentMethod = await stripeClient.paymentMethods.detach(resource.paymentMethodId);
+              assert.equal(detachedPaymentMethod.customer, null);
+            } catch (error) {
+              cleanupFailures.push(`${planId} payment method: ${error instanceof Error ? error.message : String(error)}`);
+            }
+          }
+
+          try {
+            const deletedCustomer = await stripeClient.customers.del(resource.customerId);
+            assert.equal(deletedCustomer.deleted, true);
+          } catch (error) {
+            cleanupFailures.push(`${planId} customer: ${error instanceof Error ? error.message : String(error)}`);
+          }
+        }
+        if (cleanupFailures.length > 0) {
+          throw new Error(`Stripe test cleanup failed: ${cleanupFailures.join("; ")}`);
+        }
+      }
+    },
+  );
+
   test("initializes publishing schema without a Stripe domain", async () => {
     const originalDomain = process.env.REPLIT_DOMAINS;
     delete process.env.REPLIT_DOMAINS;
