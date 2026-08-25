@@ -57,4 +57,4 @@ timeoutMs = 120000
 
 [nix]
 channel = "stable-25_05"
-packages = ["gitFull", "libxcrypt", "playwright-driver"]
+packages = ["gitFull", "libxcrypt", "playwright-driver", "flutter"]
