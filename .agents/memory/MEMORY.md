@@ -1,0 +1,11 @@
+- [OpenAPI codegen compatibility](codegen-zod-compat.md) — keep generated Zod helpers compatible with the workspace's installed Zod major version.
+- [Atomic quota counters](atomic-quota-counters.md) — PostgreSQL upserts are the quota source of truth; qualify the existing-row counter with a table alias.
+- [Stripe Sync migration assets](stripe-sync-migration-assets.md) — keep Stripe Sync external to the API bundle so its packaged SQL migrations remain discoverable.
+- [Stripe webhook credential throttling](stripe-webhook-credential-throttling.md) — retry transient connector 429s so a webhook burst is not rejected as a failed billing event.
+- [Stripe delivery test teardown](stripe-delivery-test-teardown.md) — verify workspace existence before recording Stripe events, so late deliveries cannot outlive test cleanup.
+- [Mockup graduation shell checks](mockup-graduation-production-shell.md) — validate the production parent shell, not only the isolated mockup, before calling a visual redesign complete.
+- [Scoped workspace themes](scoped-workspace-themes.md) — reset semantic component tokens locally as well as explicit legacy utilities when migrating one route family.
+- [PWA workspace data safety](pwa-workspace-data-safety.md) — keep the service worker away from authenticated API and Clerk responses to protect workspace isolation.
+- [Post-merge Drizzle safety](post-merge-drizzle-safety.md) — exclude runtime-only migration ledgers so dev schema sync does not interpret them as deletions.
+- [OmniBot Android build runtime](omnibot-android-build-runtime.md) — Android builds need a JIT-safe JVM mode and workspace-backed Gradle cache in this environment.
+- [Medical content governance](medical-content-governance.md) — medical drafts need hard policy gates and an attested reviewer decision, not warnings alone.

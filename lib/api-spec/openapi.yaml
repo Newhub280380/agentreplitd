@@ -1,0 +1,957 @@
+openapi: 3.1.0
+info:
+  # Do not change the title, if the title changes, the import paths will be broken
+  title: Api
+  version: 0.1.0
+  description: API specification
+servers:
+  - url: /api
+    description: Base API path
+security:
+  - ClerkSession: []
+tags:
+  - name: health
+    description: Health operations
+  - name: orchestrator
+    description: Unified orchestration and run history
+  - name: analytics
+    description: Market intelligence, trends, and insight extraction
+  - name: content
+    description: AI content generation and publishing
+  - name: builder
+    description: Dependency installation and application assembly
+  - name: system
+    description: Agent and integration status
+  - name: account
+    description: Customer workspace, plans, and monthly usage
+paths:
+  /healthz:
+    get:
+      security: []
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      description: Returns server health status
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+  /dashboard/summary:
+    get:
+      operationId: getDashboardSummary
+      tags: [orchestrator]
+      summary: Get command center summary
+      responses:
+        "200":
+          description: Summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardSummary"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /account:
+    get:
+      operationId: getAccountOverview
+      tags: [account]
+      summary: Get the signed-in customer's workspace, plan, and usage
+      responses:
+        "200":
+          description: Account overview
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccountOverview"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /plans:
+    get:
+      security: []
+      operationId: getPlans
+      tags: [account]
+      summary: List available product plans
+      responses:
+        "200":
+          description: Plans
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Plan"
+  /billing/checkout:
+    post:
+      operationId: createBillingCheckout
+      tags: [account]
+      summary: Create a hosted Stripe checkout session for a paid workspace plan
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CheckoutInput"
+      responses:
+        "200":
+          description: Checkout session created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckoutSession"
+        "400":
+          description: Invalid plan or missing billing profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          description: Workspace already has the selected plan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Stripe is temporarily unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /billing/portal:
+    post:
+      operationId: createBillingPortal
+      tags: [account]
+      summary: Create a hosted Stripe billing portal session
+      responses:
+        "200":
+          description: Billing portal session created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BillingPortalSession"
+        "400":
+          description: No billing profile exists for this workspace
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "502":
+          description: Stripe is temporarily unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /activities:
+    get:
+      operationId: getActivities
+      tags: [orchestrator]
+      summary: Get recent system activity
+      responses:
+        "200":
+          description: Activity feed
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Activity"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /agents:
+    get:
+      operationId: getAgents
+      tags: [system]
+      summary: List agent statuses
+      responses:
+        "200":
+          description: Agent statuses
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AgentStatus"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /connections:
+    get:
+      operationId: getConnections
+      tags: [system]
+      summary: List workspace-scoped external adapters and publishing channels
+      responses:
+        "200":
+          description: Connection statuses
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ConnectionStatus"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      operationId: connectChannel
+      tags: [content]
+      summary: Connect a permitted publishing channel to the signed-in workspace
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConnectChannelInput"
+      responses:
+        "201":
+          description: Connected channel
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConnectionStatus"
+        "400":
+          description: Invalid channel configuration
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          description: Channel access could not be verified
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /connections/{id}/check:
+    post:
+      operationId: checkChannelConnection
+      tags: [content]
+      summary: Verify that a workspace-scoped channel credential can publish to its target
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          description: Verified channel status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConnectionStatus"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Channel connection not found
+  /connections/{id}:
+    delete:
+      operationId: disconnectChannel
+      tags: [content]
+      summary: Disconnect a workspace publishing channel without exposing credentials
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          description: Channel disconnected
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConnectionActionResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Channel connection not found
+  /runs:
+    get:
+      operationId: getRuns
+      tags: [orchestrator]
+      summary: List orchestration runs
+      responses:
+        "200":
+          description: Run history
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Run"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /runs/{id}:
+    get:
+      operationId: getRun
+      tags: [orchestrator]
+      summary: Get orchestration run
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          description: Run
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Run"
+        "404":
+          description: Run not found
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /orchestrator/command:
+    post:
+      operationId: runOrchestratorCommand
+      tags: [orchestrator]
+      summary: Execute a natural-language command
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CommandInput"
+      responses:
+        "202":
+          description: Run started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Run"
+        "400":
+          description: Invalid command
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/QuotaExceeded"
+  /insights:
+    get:
+      operationId: getInsights
+      tags: [analytics]
+      summary: List market insights
+      responses:
+        "200":
+          description: Insights
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Insight"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /analysis/run:
+    post:
+      operationId: startAnalysis
+      tags: [analytics]
+      summary: Analyze a niche across video, social, and web sources
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AnalysisInput"
+      responses:
+        "202":
+          description: Analysis started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Run"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/QuotaExceeded"
+  /content:
+    get:
+      operationId: getContent
+      tags: [content]
+      summary: List generated content
+      responses:
+        "200":
+          description: Content drafts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ContentItem"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      operationId: generateContent
+      tags: [content]
+      summary: Generate content from market insights
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ContentInput"
+      responses:
+        "201":
+          description: Generated content
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContentItem"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/QuotaExceeded"
+  /content/{id}/publish:
+    post:
+      operationId: publishContent
+      tags: [content]
+      summary: Publish content to selected channels
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PublishInput"
+      responses:
+        "200":
+          description: Published content
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContentItem"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          description: One or more selected channels are not connected or content is no longer a draft
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Content not found
+  /content/{id}/review:
+    post:
+      operationId: reviewContent
+      tags: [content]
+      summary: Record a human review decision for governed medical content
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ContentReviewInput"
+      responses:
+        "200":
+          description: Content with updated review state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContentItem"
+        "400":
+          description: Invalid review confirmation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Content not found
+  /medical/dossiers:
+    get:
+      operationId: getMedicalDossiers
+      tags: [medical]
+      summary: List governed medical product dossiers in the signed-in workspace
+      responses:
+        "200":
+          description: Workspace product dossiers
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MedicalDossier"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      operationId: createMedicalDossier
+      tags: [medical]
+      summary: Create a governed medical product dossier
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MedicalDossierInput"
+      responses:
+        "201":
+          description: Created dossier
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MedicalDossier"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /medical/dossiers/{id}:
+    patch:
+      operationId: updateMedicalDossier
+      tags: [medical]
+      summary: Update a workspace-owned medical product dossier
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MedicalDossierUpdate"
+      responses:
+        "200":
+          description: Updated dossier
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MedicalDossier"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Dossier not found
+  /builder/jobs:
+    get:
+      operationId: getBuilderJobs
+      tags: [builder]
+      summary: List builder jobs
+      responses:
+        "200":
+          description: Builder jobs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/BuilderJob"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      operationId: createBuilderJob
+      tags: [builder]
+      summary: Install a dependency or assemble an app
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BuilderInput"
+      responses:
+        "202":
+          description: Builder job started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BuilderJob"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/QuotaExceeded"
+  /builder/jobs/{id}/retry:
+    post:
+      operationId: retryBuilderJob
+      tags: [builder]
+      summary: Retry a failed builder job
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "202":
+          description: Retry started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BuilderJob"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Builder job not found
+components:
+  securitySchemes:
+    ClerkSession:
+      type: http
+      scheme: bearer
+      bearerFormat: Clerk session token
+      description: Browser clients normally authenticate through Clerk-managed same-origin sessions.
+  responses:
+    Unauthorized:
+      description: Sign-in required
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    QuotaExceeded:
+      description: The workspace has reached its monthly limit for this resource.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+  schemas:
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+      required:
+        - status
+    UsageLimits:
+      type: object
+      required: [runs, content, builderJobs]
+      properties:
+        runs: { type: number }
+        content: { type: number }
+        builderJobs: { type: number }
+    Plan:
+      type: object
+      required: [id, name, priceLabel, description, limits]
+      properties:
+        id: { type: string, enum: [free, starter, pro] }
+        name: { type: string }
+        priceLabel: { type: string }
+        description: { type: string }
+        limits:
+          $ref: "#/components/schemas/UsageLimits"
+    Workspace:
+      type: object
+      required: [id, name, plan, createdAt]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        plan: { type: string, enum: [free, starter, pro] }
+        createdAt: { type: string, format: date-time }
+    UsageSummary:
+      type: object
+      required: [periodStart, runs, content, builderJobs, limits]
+      properties:
+        periodStart: { type: string, format: date-time }
+        runs: { type: number }
+        content: { type: number }
+        builderJobs: { type: number }
+        limits:
+          $ref: "#/components/schemas/UsageLimits"
+    AccountOverview:
+      type: object
+      required: [workspace, plan, usage, subscription, plans]
+      properties:
+        workspace:
+          $ref: "#/components/schemas/Workspace"
+        plan:
+          $ref: "#/components/schemas/Plan"
+        usage:
+          $ref: "#/components/schemas/UsageSummary"
+        subscription:
+          $ref: "#/components/schemas/SubscriptionSummary"
+        plans:
+          type: array
+          items:
+            $ref: "#/components/schemas/Plan"
+    SubscriptionSummary:
+      type: object
+      required: [provider, status, currentPeriodEnd, cancelAtPeriodEnd, manageAvailable]
+      properties:
+        provider: { type: string, enum: [stripe] }
+        status:
+          type: string
+          enum: [inactive, incomplete, incomplete_expired, trialing, active, past_due, canceled, unpaid, paused]
+        currentPeriodEnd: { type: ["string", "null"], format: date-time }
+        cancelAtPeriodEnd: { type: boolean }
+        manageAvailable: { type: boolean }
+    CheckoutInput:
+      type: object
+      required: [plan]
+      properties:
+        plan: { type: string, enum: [starter, pro] }
+    CheckoutSession:
+      type: object
+      required: [url]
+      properties:
+        url: { type: string }
+    BillingPortalSession:
+      type: object
+      required: [url]
+      properties:
+        url: { type: string }
+    DashboardSummary:
+      type: object
+      required: [activeRuns, insights, drafts, published, connectedChannels, systemStatus]
+      properties:
+        activeRuns: { type: number }
+        insights: { type: number }
+        drafts: { type: number }
+        published: { type: number }
+        connectedChannels: { type: number }
+        systemStatus: { type: string, enum: [operational, degraded, offline] }
+    Activity:
+      type: object
+      required: [id, timestamp, agent, title, detail, status]
+      properties:
+        id: { type: string }
+        timestamp: { type: string, format: date-time }
+        agent: { type: string }
+        title: { type: string }
+        detail: { type: string }
+        status: { type: string, enum: [success, running, warning, failed] }
+    AgentStatus:
+      type: object
+      required: [id, name, role, status, description, metric]
+      properties:
+        id: { type: string, enum: [analyst, builder, seller, orchestrator] }
+        name: { type: string }
+        role: { type: string }
+        status: { type: string, enum: [online, running, attention, offline] }
+        description: { type: string }
+        metric: { type: string }
+    ConnectionStatus:
+      type: object
+      required: [id, provider, category, status, detail]
+      properties:
+        id: { type: string }
+        provider: { type: string }
+        category: { type: string, enum: [source, channel, payment, memory, ai] }
+        status: { type: string, enum: [connected, configured, needs_setup, unavailable] }
+        detail: { type: string }
+        channel: { type: string, enum: [telegram, vk, instagram] }
+        target: { type: ["string", "null"] }
+        lastCheckedAt: { type: ["string", "null"], format: date-time }
+        canDisconnect: { type: boolean }
+    ConnectChannelInput:
+      type: object
+      required: [provider, target, credential]
+      properties:
+        provider: { type: string, enum: [telegram, vk, instagram] }
+        target: { type: string, minLength: 1, maxLength: 200 }
+        credential:
+          type: string
+          minLength: 8
+          description: Sent once over HTTPS, encrypted server-side, and never returned by the API.
+    ConnectionActionResponse:
+      type: object
+      required: [success]
+      properties:
+        success: { type: boolean }
+    Run:
+      type: object
+      required: [id, command, kind, status, startedAt, steps]
+      properties:
+        id: { type: string }
+        command: { type: string }
+        kind: { type: string, enum: [analysis, publishing, builder, full_pipeline] }
+        status: { type: string, enum: [queued, running, completed, failed] }
+        startedAt: { type: string, format: date-time }
+        finishedAt: { type: ["string", "null"], format: date-time }
+        summary: { type: ["string", "null"] }
+        steps:
+          type: array
+          items:
+            $ref: "#/components/schemas/RunStep"
+    RunStep:
+      type: object
+      required: [agent, label, status]
+      properties:
+        agent: { type: string }
+        label: { type: string }
+        status: { type: string, enum: [queued, running, completed, failed] }
+        detail: { type: ["string", "null"] }
+    CommandInput:
+      type: object
+      required: [command]
+      properties:
+        command: { type: string, minLength: 3 }
+    AnalysisInput:
+      type: object
+      required: [niche]
+      properties:
+        niche: { type: string, minLength: 2 }
+        sources:
+          type: array
+          items: { type: string, enum: [youtube, telegram, tiktok, google] }
+    Insight:
+      type: object
+      required: [id, trend, reach, emotion, conclusion, source, score]
+      properties:
+        id: { type: string }
+        trend: { type: string }
+        reach: { type: string }
+        emotion: { type: string }
+        conclusion: { type: string }
+        source: { type: string }
+        score: { type: number, minimum: 0, maximum: 100 }
+        createdAt: { type: string, format: date-time }
+    ContentInput:
+      type: object
+      required: [topic, channels]
+      properties:
+        topic: { type: string, minLength: 2 }
+        channels:
+          type: array
+          items: { type: string, enum: [telegram, vk, instagram] }
+        tone: { type: string }
+        dossierId: { type: string }
+        format:
+          type: string
+          enum: [expert_post, product_card, reels_brief, sales_message]
+    ContentItem:
+      type: object
+      required: [id, title, body, channels, status, imageUrl, format, dossierId, reviewState, claimWarnings, requiresHumanReview, reviewedBy, reviewedAt, contentVersion, reviewTrail, createdAt]
+      properties:
+        id: { type: string }
+        title: { type: string }
+        body: { type: string }
+        channels:
+          type: array
+          items: { type: string }
+        status: { type: string, enum: [draft, in_review, changes_requested, approved, scheduled, publishing, published, partial, failed] }
+        imageUrl: { type: ["string", "null"] }
+        format: { type: string, enum: [expert_post, product_card, reels_brief, sales_message] }
+        dossierId: { type: ["string", "null"] }
+        reviewState: { type: string, enum: [pending, in_review, changes_requested, approved] }
+        claimWarnings:
+          type: array
+          items: { type: string }
+        requiresHumanReview: { type: boolean }
+        reviewedBy: { type: ["string", "null"] }
+        reviewedAt: { type: ["string", "null"], format: date-time }
+        contentVersion: { type: number }
+        reviewTrail:
+          type: array
+          items:
+            $ref: "#/components/schemas/ContentReviewEvent"
+        createdAt: { type: string, format: date-time }
+        deliveries:
+          type: array
+          items:
+            $ref: "#/components/schemas/PublishDelivery"
+    PublishInput:
+      type: object
+      required: [channels, confirmed]
+      properties:
+        channels:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items: { type: string, enum: [telegram, vk, instagram] }
+        confirmed:
+          type: boolean
+          description: Must be true after the user has reviewed the selected channels.
+    ContentReviewInput:
+      type: object
+      required: [decision, confirmed]
+      properties:
+        decision: { type: string, enum: [in_review, changes_requested, approved] }
+        reviewer: { type: string, minLength: 2, maxLength: 120 }
+        notes: { type: string, maxLength: 1200 }
+        confirmed:
+          type: boolean
+          description: Must be true after an operator has reviewed all claims and warnings.
+    ContentReviewEvent:
+      type: object
+      required: [decision, reviewer, notes, attested, version, createdAt]
+      properties:
+        decision: { type: string, enum: [in_review, changes_requested, approved] }
+        reviewer: { type: string }
+        notes: { type: string }
+        attested:
+          type: boolean
+          description: Reviewer explicitly acknowledged the decision and evidence review.
+        version: { type: number }
+        createdAt: { type: string, format: date-time }
+    MedicalDossierInput:
+      type: object
+      required: [name, volume, registrationSafety, reviewState]
+      properties:
+        name: { type: string, minLength: 2, maxLength: 200 }
+        volume: { type: string, minLength: 1, maxLength: 80 }
+        sourceLinks:
+          type: array
+          items: { type: string }
+        registrationSafety: { type: string, minLength: 10, maxLength: 4000 }
+        approvedClaims:
+          type: array
+          items: { type: string, minLength: 3, maxLength: 500 }
+        audiences:
+          type: array
+          items: { type: string, minLength: 2, maxLength: 200 }
+        reviewState: { type: string, enum: [needs_evidence, in_review, approved, changes_requested] }
+    MedicalDossierUpdate:
+      type: object
+      properties:
+        name: { type: string, minLength: 2, maxLength: 200 }
+        volume: { type: string, minLength: 1, maxLength: 80 }
+        sourceLinks:
+          type: array
+          items: { type: string }
+        registrationSafety: { type: string, minLength: 10, maxLength: 4000 }
+        approvedClaims:
+          type: array
+          items: { type: string, minLength: 3, maxLength: 500 }
+        audiences:
+          type: array
+          items: { type: string, minLength: 2, maxLength: 200 }
+        reviewState: { type: string, enum: [needs_evidence, in_review, approved, changes_requested] }
+    MedicalDossier:
+      type: object
+      required: [id, name, volume, sourceLinks, registrationSafety, approvedClaims, audiences, reviewState, version, createdAt, updatedAt]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        volume: { type: string }
+        sourceLinks:
+          type: array
+          items: { type: string }
+        registrationSafety: { type: string }
+        approvedClaims:
+          type: array
+          items: { type: string }
+        audiences:
+          type: array
+          items: { type: string }
+        reviewState: { type: string, enum: [needs_evidence, in_review, approved, changes_requested] }
+        version: { type: number }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    PublishDelivery:
+      type: object
+      required: [channel, target, status, detail, externalId]
+      properties:
+        channel: { type: string, enum: [telegram, vk, instagram] }
+        target: { type: string }
+        status: { type: string, enum: [published, failed] }
+        detail: { type: string }
+        externalId: { type: ["string", "null"] }
+    BuilderInput:
+      type: object
+      required: [kind, instruction]
+      properties:
+        kind: { type: string, enum: [install, assemble] }
+        instruction: { type: string, minLength: 3 }
+        packageManager: { type: string, enum: [pip, npm, pnpm, auto] }
+    BuilderJob:
+      type: object
+      required: [id, kind, instruction, status, attempts, createdAt, logs]
+      properties:
+        id: { type: string }
+        kind: { type: string, enum: [install, assemble] }
+        instruction: { type: string }
+        packageManager: { type: string }
+        status: { type: string, enum: [queued, running, completed, failed] }
+        attempts: { type: number }
+        createdAt: { type: string, format: date-time }
+        logs:
+          type: array
+          items: { type: string }
+

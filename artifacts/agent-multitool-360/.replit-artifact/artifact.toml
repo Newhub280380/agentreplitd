@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "Агент-мультитул 360"
+description = "Единая панель управления четырьмя AI-агентами: анализ ниш и трендов, сборка приложений, генерация и публикация контента, а также оркестрация рабочих процессов с памятью и журналом событий."
+version = "1.0.0"
+id = "artifacts/agent-multitool-360"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 25580
+
+[services.development]
+run = "pnpm --filter @workspace/agent-multitool-360 run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/agent-multitool-360", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/agent-multitool-360/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "25580"
+BASE_PATH = "/"

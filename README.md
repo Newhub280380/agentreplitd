@@ -1,36 +1,40 @@
-# agentreplitd
+# Агент-мультитул 360
 
-Заготовка (scaffold) под агентное прототипирование: площадка в GitHub для экспериментов
-с агентами, которые собирают и дорабатывают приложения (в т.ч. в связке с Replit).
+Панель для анализа рынка, генерации контента, сборки приложений и управления AI-агентами. Её собрал Replit Agent в августе 2026. Раньше проект лежал только в ветках `replit-main` и `subrepl-*`, а `main` был пустым.
 
-> **Статус: репозиторий пустой.** Создан 26.08.2026, коммитов нет, ни одного файла
-> (кроме этого README) в нём не появилось. Это осознанная «нулевая точка» — чтобы проект
-> был виден в GitHub, а не лежал папкой на локальном диске.
+## Состав
 
-## Зачем существует
+| Папка | Что внутри |
+|---|---|
+| `artifacts/agent-multitool-360` | React + Vite: лендинг, вход через Clerk, командный центр |
+| `artifacts/api-server` | Express 5 API: воркспейсы, квоты, тарифы, каналы (Telegram / VK / Instagram), Stripe |
+| `services/agent-engine` | Python FastAPI + LangGraph: исполнитель агентов (`/execute`, `/healthz`) на порту 8000 |
+| `lib/db` | Drizzle ORM, схема PostgreSQL |
+| `lib/api-spec`, `lib/api-zod`, `lib/api-client-react` | OpenAPI-контракт и сгенерированные клиенты |
+| `artifacts/mockup-sandbox` | песочница UI-макетов |
+| `external/omnibot` | форк OpenOmniBot (Android/Flutter), отдельный проект со своей лицензией |
 
-- Зафиксировать место под проект до появления первого модуля.
-- Отделить «код агента» от «инфраструктуры» (n8n, CRM, деплой) — здесь живёт только код.
-- Не плодить репозитории под каждый эксперимент: один репозиторий, feature-ветки.
+## Запуск
 
-## Что планируется (нужно подтвердить владельцу)
-
-1. Минимальный каркас приложения (шаблон, воркфлоу запуска, тесты).
-2. Правила для агентов: как форматировать код, где хранить инструкции, как запускать CI.
-3. CI: сборка + тесты — как только появится код, к которому это применимо.
-4. Секреты — только через окружение/`.env.example`, никогда в git.
-
-## Как начать
+Нужны Node 22+, pnpm 10, Python 3.11 и PostgreSQL.
 
 ```bash
-git clone https://github.com/Newhub280380/agentreplitd.git
-cd agentreplitd
-# добавить первый модуль в feature-ветку:
-git checkout -b feat/<что-делаем>
+pnpm install
+export DATABASE_URL=postgres://...      # обязательно
+export SESSION_SECRET=...                # шифрует токены каналов, без него подключение каналов падает
+export CLERK_SECRET_KEY=... CLERK_PUBLISHABLE_KEY=...   # вход пользователей
+export AI_INTEGRATIONS_OPENAI_BASE_URL=... AI_INTEGRATIONS_OPENAI_API_KEY=...  # LLM для agent-engine
+pnpm --filter @workspace/db run push
+pnpm --filter @workspace/api-server run dev
+python -m uvicorn main:app --host 0.0.0.0 --port 8000 --app-dir services/agent-engine
+pnpm --filter @workspace/agent-multitool-360 run dev
 ```
 
-## Что нужно от владельца
+## Проверки
 
-- Определить, чем живёт проект: если идея ушла в сторону — репозиторий можно архивировать
-  или удалить вручную (автоматического удаления нет и не будет).
-- Если проект живёт — прислать/положить первый модуль, дальше подключим CI по факту стека.
+```bash
+pnpm run typecheck   # tsc по всем пакетам + регрессия безопасности (нужны переменные выше)
+pnpm run build
+```
+
+Подробная архитектура описана в `replit.md`.

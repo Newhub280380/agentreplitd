@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 40" role="img" aria-label="Multitool 360">
+  <rect width="160" height="40" fill="#09090b"/>
+  <path d="M12 27V13l7 10 7-10v14" fill="none" stroke="#ff4d00" stroke-width="3" stroke-linecap="square" stroke-linejoin="miter"/>
+  <text x="40" y="26" fill="#ffffff" font-family="Arial, sans-serif" font-size="14" font-weight="700" letter-spacing="1.5">MULTITOOL 360</text>
+</svg>

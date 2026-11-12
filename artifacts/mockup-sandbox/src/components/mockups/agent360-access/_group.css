@@ -1,0 +1,76 @@
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Inter:wght@400;500;600&display=swap');
+
+.agent360-access {
+  --emerald: #10b981;
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  min-height: 100vh;
+  overflow: hidden;
+  place-items: center;
+  padding: 40px 16px;
+  color: #f4f4f5;
+  background:
+    radial-gradient(ellipse 55% 68% at 54% 43%, rgba(16, 185, 129, .15), transparent 55%),
+    radial-gradient(ellipse 48% 65% at 12% 8%, rgba(18, 65, 53, .5), transparent 68%),
+    linear-gradient(130deg, #030605 0%, #07100e 45%, #020303 100%);
+  font-family: Inter, sans-serif;
+}
+
+.agent360-access *, .agent360-access *::before, .agent360-access *::after { box-sizing: border-box; }
+.agent360-access button, .agent360-access input { font: inherit; }
+
+.agent360-access .aa-background {
+  position: absolute;
+  z-index: -4;
+  inset: -5%;
+  opacity: .8;
+  background:
+    linear-gradient(120deg, rgba(0, 0, 0, .7), transparent 42%, rgba(0, 0, 0, .8)),
+    repeating-linear-gradient(105deg, rgba(255,255,255,.018) 0 1px, transparent 1px 16px);
+  filter: contrast(1.15);
+}
+
+.agent360-access .aa-grid {
+  position: absolute;
+  z-index: -2;
+  inset: 0;
+  opacity: .72;
+  background-image: linear-gradient(rgba(16,185,129,.04) 1px, transparent 1px), linear-gradient(90deg, rgba(16,185,129,.04) 1px, transparent 1px);
+  background-size: 4rem 4rem;
+  -webkit-mask-image: radial-gradient(ellipse 70% 70% at 50% 50%, #000 10%, transparent 100%);
+  mask-image: radial-gradient(ellipse 70% 70% at 50% 50%, #000 10%, transparent 100%);
+}
+
+.agent360-access .aa-vignette { position: absolute; z-index: -1; inset: 0; background: radial-gradient(circle at center, transparent 12%, rgba(0,0,0,.32) 53%, #000 100%); pointer-events: none; }
+.agent360-access .aa-scanlines { position: absolute; z-index: 2; inset: 0; opacity: .45; pointer-events: none; background: linear-gradient(to bottom, transparent 50%, rgba(0,0,0,.2) 51%); background-size: 100% 4px; mix-blend-mode: overlay; }
+
+.agent360-access .aa-scene { position: absolute; z-index: -1; top: 50%; left: 50%; width: min(800px, 100vw); height: min(800px, 100vh); pointer-events: none; transform: translate(-50%, -50%); perspective: 1200px; }
+.agent360-access .aa-particles { position: absolute; inset: -50%; opacity: .3; background-image: radial-gradient(circle, rgba(16,185,129,.28) 1px, transparent 1.2px); background-size: 60px 60px; animation: aa-drift 90s linear infinite; }
+.agent360-access .aa-core { position: absolute; top: 50%; left: 50%; width: 105px; height: 105px; border-radius: 50%; background: rgba(16,185,129,.8); filter: blur(50px); transform: translate(-50%, -50%); animation: aa-pulse 6s ease-in-out infinite alternate; }
+.agent360-access .aa-cube { position: absolute; top: 50%; left: 50%; width: 300px; height: 300px; transform-style: preserve-3d; animation: aa-rotate 40s linear infinite; }
+.agent360-access .aa-face { position: absolute; width: 300px; height: 300px; border: 1px solid rgba(16,185,129,.3); background: linear-gradient(135deg, rgba(16,185,129,.05), transparent); box-shadow: inset 0 0 60px rgba(16,185,129,.1); backdrop-filter: blur(4px); }
+.agent360-access .aa-front { transform: translateZ(150px); }.agent360-access .aa-back { transform: rotateY(180deg) translateZ(150px); }.agent360-access .aa-right { transform: rotateY(90deg) translateZ(150px); }.agent360-access .aa-left { transform: rotateY(-90deg) translateZ(150px); }.agent360-access .aa-top { transform: rotateX(90deg) translateZ(150px); }.agent360-access .aa-bottom { transform: rotateX(-90deg) translateZ(150px); }
+
+.agent360-access .aa-content { position: relative; z-index: 3; width: min(440px, 100%); animation: aa-enter 1s .3s both; }
+.agent360-access .aa-card { position: relative; overflow: hidden; border: 1px solid rgba(16,185,129,.2); background: rgba(9,9,11,.6); box-shadow: 0 0 60px rgba(0,0,0,.8); backdrop-filter: blur(20px); }
+.agent360-access .aa-card::before { position: absolute; z-index: -1; inset: 0; content: ""; background-image: linear-gradient(rgba(16,185,129,.02) 1px, transparent 1px), linear-gradient(90deg, rgba(16,185,129,.02) 1px, transparent 1px); background-size: 2rem 2rem; }
+.agent360-access .aa-card-inner { padding: 40px; }
+.agent360-access .aa-mark { display: flex; align-items: center; gap: 11px; margin-bottom: 38px; color: #d1fae5; font-family: "Space Grotesk", sans-serif; font-size: 12px; font-weight: 700; letter-spacing: .18em; text-transform: uppercase; }
+.agent360-access .aa-mark-icon { width: 32px; height: 32px; border: 1px solid var(--emerald); display: grid; place-items: center; color: var(--emerald); box-shadow: 0 0 15px rgba(16,185,129,.65); }
+.agent360-access .aa-mark-icon::after { width: 11px; height: 11px; content: ""; border: 1px solid currentColor; transform: rotate(45deg); }
+.agent360-access .aa-title { margin: 0; color: #34d399; font-family: "Space Grotesk", sans-serif; font-size: 24px; font-weight: 500; letter-spacing: .16em; line-height: 1.15; text-transform: uppercase; text-shadow: 0 0 10px rgba(16,185,129,.5); }
+.agent360-access .aa-subtitle { margin: 12px 0 26px; color: rgba(16,185,129,.5); font-family: "JetBrains Mono", monospace; font-size: 11px; letter-spacing: .1em; line-height: 1.45; text-transform: uppercase; }
+.agent360-access .aa-social { width: 100%; height: 48px; border: 1px solid rgba(16,185,129,.2); border-radius: 0; background: rgba(9,9,11,.8); color: #d4d4d8; cursor: pointer; box-shadow: inset 0 0 20px rgba(0,0,0,.5); font-family: "JetBrains Mono", monospace; font-size: 11px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; }
+.agent360-access .aa-google { display: inline-grid; width: 17px; height: 17px; margin-right: 10px; border-radius: 50%; place-items: center; background: conic-gradient(#4285f4 0 25%, #34a853 0 50%, #fbbc05 0 75%, #ea4335 0); color: white; font-family: Arial, sans-serif; font-size: 10px; font-weight: bold; }
+.agent360-access .aa-divider { display: flex; align-items: center; gap: 14px; margin: 23px 0; color: rgba(16,185,129,.3); font-family: "JetBrains Mono", monospace; font-size: 11px; letter-spacing: .3em; }.agent360-access .aa-divider::before, .agent360-access .aa-divider::after { height: 1px; flex: 1; content: ""; background: rgba(16,185,129,.1); }
+.agent360-access .aa-field { display: grid; gap: 8px; margin-bottom: 18px; }.agent360-access .aa-label { color: rgba(16,185,129,.7); font-family: "JetBrains Mono", monospace; font-size: 10px; font-weight: 600; letter-spacing: .2em; text-transform: uppercase; }.agent360-access .aa-input { width: 100%; height: 48px; border: 1px solid rgba(16,185,129,.2); border-radius: 0; outline: 0; background: rgba(9,9,11,.8); color: #ecfdf5; box-shadow: inset 0 2px 10px rgba(0,0,0,.5); padding: 0 13px; font-family: "JetBrains Mono", monospace; font-size: 13px; }.agent360-access .aa-input::placeholder { color: #71717a; }.agent360-access .aa-input:focus { border-color: #34d399; box-shadow: 0 0 0 1px rgba(52,211,153,.45), inset 0 2px 10px rgba(0,0,0,.5); }
+.agent360-access .aa-submit { width: 100%; height: 48px; margin-top: 2px; border: 1px solid rgba(16,185,129,.5); border-radius: 0; background: rgba(16,185,129,.2); color: #34d399; cursor: pointer; box-shadow: 0 0 20px rgba(16,185,129,.15); font-family: "JetBrains Mono", monospace; font-size: 11px; font-weight: 700; letter-spacing: .2em; text-transform: uppercase; }.agent360-access .aa-submit:hover { border-color: #34d399; background: rgba(16,185,129,.3); box-shadow: 0 0 30px rgba(16,185,129,.3); }
+.agent360-access .aa-footer { margin: 30px 0 0; color: rgba(16,185,129,.4); text-align: center; font-family: "JetBrains Mono", monospace; font-size: 11px; letter-spacing: .1em; text-transform: uppercase; }.agent360-access .aa-footer button { margin-left: 7px; border: 0; padding: 0; background: none; color: #34d399; cursor: pointer; font: inherit; }
+.agent360-access .aa-status { position: absolute; z-index: 3; bottom: 24px; left: 24px; display: flex; flex-direction: column; gap: 6px; color: rgba(16,185,129,.4); font-family: "JetBrains Mono", monospace; font-size: 10px; letter-spacing: .2em; line-height: 1.15; text-transform: uppercase; }.agent360-access .aa-status-online { display: flex; align-items: center; gap: 8px; }.agent360-access .aa-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--emerald); animation: aa-blink 1.5s infinite; }.agent360-access .aa-status-app { margin-top: 6px; color: rgba(16,185,129,.2); }
+
+@keyframes aa-rotate { from { transform: translate(-50%, -50%) rotateX(15deg) rotateY(0) rotateZ(0); } to { transform: translate(-50%, -50%) rotateX(375deg) rotateY(720deg) rotateZ(360deg); } }
+@keyframes aa-pulse { from { transform: translate(-50%, -50%) scale(1); opacity: .5; } to { transform: translate(-50%, -50%) scale(1.8); opacity: 1; } }
+@keyframes aa-drift { to { transform: translateY(-5%) rotate(3deg); } } @keyframes aa-blink { 50% { opacity: .35; } } @keyframes aa-enter { from { opacity: 0; transform: scale(.95); } to { opacity: 1; transform: scale(1); } }
+@media (max-width: 640px) { .agent360-access { padding: 28px 16px; }.agent360-access .aa-card-inner { padding: 28px 24px; }.agent360-access .aa-mark { margin-bottom: 28px; }.agent360-access .aa-status { display: none; } }
+@media (prefers-reduced-motion: reduce) { .agent360-access .aa-particles, .agent360-access .aa-core, .agent360-access .aa-cube, .agent360-access .aa-dot, .agent360-access .aa-content { animation: none; } }
