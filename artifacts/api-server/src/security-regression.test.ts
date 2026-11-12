@@ -1269,7 +1269,7 @@ describe("agent 360 authentication and quota regression", () => {
     });
     assert.equal(dossierlessDraftResponse.status, 201);
     const dossierlessDraft = GenerateContentResponse.parse(await json(dossierlessDraftResponse));
-    assert.ok(dossierlessDraft.claimWarnings.some((warning) => warning.includes("не привязан к dossier")));
+    assert.ok(dossierlessDraft.claimWarnings.some((warning: string) => warning.includes("не привязан к dossier")));
 
     const blockedApproval = await request(`/api/content/${warningDraft.id}/review`, userId, {
       method: "POST",
