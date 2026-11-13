@@ -63,6 +63,8 @@ export default defineConfig({
     strictPort: true,
     host: '0.0.0.0',
     allowedHosts: true,
+    // Локально (вне Replit) /api проксируется на api-server.
+    proxy: { '/api': process.env.API_URL ?? 'http://127.0.0.1:8080' },
     fs: {
       strict: true,
     },
