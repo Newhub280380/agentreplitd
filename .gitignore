@@ -55,3 +55,6 @@ external/omnibot/ReTerminal/out/
 .pythonlibs/
 __pycache__/
 .venv/
+
+# локальные секреты
+.env

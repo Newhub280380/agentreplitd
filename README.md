@@ -14,7 +14,15 @@
 | `artifacts/mockup-sandbox` | песочница UI-макетов |
 | `external/omnibot` | форк OpenOmniBot (Android/Flutter), отдельный проект со своей лицензией |
 
-## Запуск
+## Быстрый старт (одна команда, Linux/WSL)
+
+```bash
+bash scripts/up.sh
+```
+
+При первом запуске скрипт создаст `.env` и попросит вписать туда ключи Clerk: `CLERK_SECRET_KEY` и `CLERK_PUBLISHABLE_KEY` (https://dashboard.clerk.com → API Keys). Для «мозгов» агентов нужен ещё `AI_INTEGRATIONS_OPENAI_API_KEY`. Остальное скрипт сделает сам: поставит и поднимет PostgreSQL, сгенерирует `SESSION_SECRET`, создаст таблицы и запустит движок (8000), API (8080) и панель — **http://localhost:25580**.
+
+## Запуск вручную
 
 Нужны Node 22+, pnpm 10, Python 3.11 и PostgreSQL.
 
