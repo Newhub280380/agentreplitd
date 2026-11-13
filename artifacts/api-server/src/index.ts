@@ -46,7 +46,8 @@ try {
   logger.error({ err }, "Stripe initialization failed; billing requests will return an explicit error");
 }
 
-app.listen(port, (err) => {
+const host = process.env["HOST"] ?? "127.0.0.1";
+app.listen(port, host, (err) => {
   if (err) {
     logger.error({ err }, "Error listening on port");
     process.exit(1);
